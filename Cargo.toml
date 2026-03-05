@@ -1,0 +1,14 @@
+[package]
+name = "financeindia"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "financeindia"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Use 0.23 for Python 3.13 support
+pyo3 = { version = "0.23", features = ["extension-module"] }
+# Ensure cookies feature is enabled
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "cookies"] }
