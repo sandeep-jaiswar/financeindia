@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, ClientBuilder};
+use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT, ACCEPT, ACCEPT_LANGUAGE, REFERER, CACHE_CONTROL, PRAGMA};
 use std::time::Duration;
 
 #[pyclass]
@@ -12,22 +13,33 @@ struct FinanceClient {
 impl FinanceClient {
     #[new]
     fn new() -> PyResult<Self> {
-        let client = Client::builder()
-            .cookie_store(true) 
-            .timeout(Duration::from_secs(10))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+        let mut headers = HeaderMap::new();
+        
+        // Exact headers from your working example
+        headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"));
+        headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
+        headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US,en;q=0.9"));
+        headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        headers.insert(PRAGMA, HeaderValue::from_static("no-cache"));
+
+        let client = ClientBuilder::new()
+            .default_headers(headers)
+            .cookie_store(true)
+            .timeout(Duration::from_secs(1))
             .build()
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
 
         Ok(FinanceClient { client })
     }
 
-    /// Fetches the home page once to initialize cookies
     fn _initialize_session(&self, py: Python<'_>) -> PyResult<()> {
-        // Correct syntax for PyO3 0.23
         py.allow_threads(|| {
-            self.client.get("https://www.nseindia.com/")
+            // Must hit the home page first to "bake" the cookies in the Jar
+            let response = self.client.get("https://www.nseindia.com/")
                 .send()
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+            
+            response.error_for_status()
                 .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
             Ok(())
         })
@@ -35,12 +47,12 @@ impl FinanceClient {
 
     fn get_market_status(&self, py: Python<'_>) -> PyResult<String> {
         py.allow_threads(|| {
-            // Step 1: Hit home page
-            let _ = self.client.get("https://www.nseindia.com/").send();
+            // 1. Refresh cookies by hitting a landing page (mimic human behavior)
+            let _ = self.client.get("https://www.nseindia.com/all-reports").send();
 
-            // Step 2: API Call
+            // 2. The actual API call
             let response = self.client.get("https://www.nseindia.com/api/marketStatus")
-                .header("Referer", "https://www.nseindia.com/")
+                .header(REFERER, "https://www.nseindia.com/all-reports")
                 .send()
                 .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
 
