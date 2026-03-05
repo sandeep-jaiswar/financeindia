@@ -3,13 +3,12 @@ name = "financeindia"
 version = "0.1.0"
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "financeindia"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.27.0", features = ["extension-module"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# Use 0.23 for Python 3.13 support
+pyo3 = { version = "0.23", features = ["extension-module"] }
+# Ensure cookies feature is enabled
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "cookies"] }
