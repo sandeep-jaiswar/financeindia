@@ -45,16 +45,19 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: 3.13
-      - name: Install powerpc64le cross toolchain
-        if: matrix.platform.target == 'ppc64le'
+      - name: Install cross toolchains
+        if: matrix.platform.target != 'x86_64' && matrix.platform.target != 'x86'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-powerpc64le-linux-gnu libc6-dev-ppc64el-cross
-      - name: Install s390x cross toolchain
-        if: matrix.platform.target == 's390x'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-s390x-linux-gnu libc6-dev-s390x-cross
+          if [ "${{ matrix.platform.target }}" = "aarch64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          elif [ "${{ matrix.platform.target }}" = "armv7" ]; then
+            sudo apt-get install -y gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
+          elif [ "${{ matrix.platform.target }}" = "s390x" ]; then
+            sudo apt-get install -y gcc-s390x-linux-gnu libc6-dev-s390x-cross
+          elif [ "${{ matrix.platform.target }}" = "ppc64le" ]; then
+            sudo apt-get install -y gcc-powerpc64le-linux-gnu libc6-dev-ppc64el-cross
+          fi
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
