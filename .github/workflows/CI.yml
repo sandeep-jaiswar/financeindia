@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.13.11"
 
       - name: Install cross-toolchains (fallbacks)
         if: contains(fromJSON('["s390x", "ppc64le"]'), matrix.platform.target)
@@ -96,7 +96,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.13.11"
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -130,7 +130,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.13.11"
           architecture: ${{ matrix.platform.python_arch }}
 
       - name: Build wheels
