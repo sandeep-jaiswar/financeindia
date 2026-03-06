@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use reqwest::blocking::Client;
 use reqwest::header::{REFERER, ACCEPT};
 use chrono::NaiveDate;
@@ -62,7 +62,7 @@ pub fn price_volume_data(client: &Client, symbol: &str, from_date: &str, to_date
     let to = parse_date_robust(to_date)?;
     
     if from > to {
-        return Err(PyErr::new::<PyRuntimeError, _>("from_date cannot be after to_date"));
+        return Err(PyErr::new::<PyValueError, _>("from_date must be <= to_date"));
     }
 
     let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
@@ -80,7 +80,7 @@ pub fn deliverable_position_data(client: &Client, symbol: &str, from_date: &str,
     let to = parse_date_robust(to_date)?;
     
     if from > to {
-        return Err(PyErr::new::<PyRuntimeError, _>("from_date cannot be after to_date"));
+        return Err(PyErr::new::<PyValueError, _>("from_date must be <= to_date"));
     }
 
     let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
@@ -142,7 +142,7 @@ pub fn bulk_deal_data(client: &Client, from_date: &str, to_date: &str) -> PyResu
     let to = parse_date_robust(to_date)?;
     
     if from > to {
-        return Err(PyErr::new::<PyRuntimeError, _>("from_date cannot be after to_date"));
+        return Err(PyErr::new::<PyValueError, _>("from_date must be <= to_date"));
     }
     
     let url = format!(
@@ -159,7 +159,7 @@ pub fn block_deals_data(client: &Client, from_date: &str, to_date: &str) -> PyRe
     let to = parse_date_robust(to_date)?;
     
     if from > to {
-        return Err(PyErr::new::<PyRuntimeError, _>("from_date cannot be after to_date"));
+        return Err(PyErr::new::<PyValueError, _>("from_date must be <= to_date"));
     }
     
     let url = format!(
