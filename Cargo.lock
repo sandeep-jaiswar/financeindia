@@ -312,6 +312,7 @@ name = "financeindia"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "percent-encoding",
  "pyo3",
  "reqwest",
  "zip",

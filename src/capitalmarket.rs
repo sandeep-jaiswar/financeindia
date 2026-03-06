@@ -5,6 +5,7 @@ use reqwest::header::{REFERER, ACCEPT};
 use chrono::NaiveDate;
 use std::io::Read;
 use zip::ZipArchive;
+use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
 
 /// Internal helper to parse dates from various common formats.
 fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
@@ -64,9 +65,10 @@ pub fn price_volume_data(client: &Client, symbol: &str, from_date: &str, to_date
         return Err(PyErr::new::<PyRuntimeError, _>("from_date cannot be after to_date"));
     }
 
+    let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/historicalOR/generateSecurityWiseHistoricalData?from={}&to={}&symbol={}&type=priceVolume&series=ALL&csv=true",
-        from.format("%d-%m-%Y"), to.format("%d-%m-%Y"), symbol
+        from.format("%d-%m-%Y"), to.format("%d-%m-%Y"), encoded_symbol
     );
     
     fetch_text(client, &url, Some("https://nsewebsite-staging.nseindia.com/report-detail/eq_security"))
@@ -81,9 +83,10 @@ pub fn deliverable_position_data(client: &Client, symbol: &str, from_date: &str,
         return Err(PyErr::new::<PyRuntimeError, _>("from_date cannot be after to_date"));
     }
 
+    let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/historicalOR/generateSecurityWiseHistoricalData?from={}&to={}&symbol={}&type=deliverable&series=ALL&csv=true",
-        from.format("%d-%m-%Y"), to.format("%d-%m-%Y"), symbol
+        from.format("%d-%m-%Y"), to.format("%d-%m-%Y"), encoded_symbol
     );
     
     fetch_text(client, &url, Some("https://nsewebsite-staging.nseindia.com/report-detail/eq_security"))
@@ -99,6 +102,7 @@ pub fn bhav_copy_equities(client: &Client, date: &str) -> PyResult<String> {
     );
     
     let response = client.get(&url)
+        .header(REFERER, "https://www.nseindia.com/all-reports")
         .send()
         .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Network error: {}", e)))?;
 
@@ -137,6 +141,10 @@ pub fn bulk_deal_data(client: &Client, from_date: &str, to_date: &str) -> PyResu
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     
+    if from > to {
+        return Err(PyErr::new::<PyRuntimeError, _>("from_date cannot be after to_date"));
+    }
+    
     let url = format!(
         "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=bulk_deals&from={}&to={}&csv=true",
         from.format("%d-%m-%Y"), to.format("%d-%m-%Y")
@@ -149,6 +157,10 @@ pub fn bulk_deal_data(client: &Client, from_date: &str, to_date: &str) -> PyResu
 pub fn block_deals_data(client: &Client, from_date: &str, to_date: &str) -> PyResult<String> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
+    
+    if from > to {
+        return Err(PyErr::new::<PyRuntimeError, _>("from_date cannot be after to_date"));
+    }
     
     let url = format!(
         "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=block_deals&from={}&to={}&csv=true",

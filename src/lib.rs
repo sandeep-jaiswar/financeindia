@@ -34,24 +34,23 @@ impl FinanceClient {
     }
 
     fn _initialize_session(&self, py: Python<'_>) -> PyResult<()> {
-        py.allow_threads(|| {
-            // Must hit the home page first to "bake" the cookies in the Jar
-            let response = self.client.get("https://www.nseindia.com/all-reports")
-                .send()
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-            
-            response.error_for_status()
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-            Ok(())
-        })
+        py.allow_threads(|| self.ensure_session())
+    }
+
+    fn ensure_session(&self) -> PyResult<()> {
+        // Must hit the home page first to "bake" the cookies in the Jar
+        let response = self.client.get("https://www.nseindia.com/all-reports")
+            .send()
+            .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+        
+        response.error_for_status()
+            .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+        Ok(())
     }
 
     fn get_market_status(&self, py: Python<'_>) -> PyResult<String> {
         py.allow_threads(|| {
-            // 1. Refresh cookies by hitting a landing page (mimic human behavior)
-            let _ = self.client.get("https://www.nseindia.com/all-reports").send();
-
-            // 2. The actual API call
+            self.ensure_session()?;
             let response = self.client.get("https://www.nseindia.com/api/marketStatus")
                 .header(REFERER, "https://www.nseindia.com/all-reports")
                 .send()
@@ -67,42 +66,49 @@ impl FinanceClient {
 
     fn price_volume_data(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String) -> PyResult<String> {
         py.allow_threads(|| {
+            self.ensure_session()?;
             capitalmarket::price_volume_data(&self.client, &symbol, &from_date, &to_date)
         })
     }
 
     fn deliverable_position_data(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String) -> PyResult<String> {
         py.allow_threads(|| {
+            self.ensure_session()?;
             capitalmarket::deliverable_position_data(&self.client, &symbol, &from_date, &to_date)
         })
     }
 
     fn bhav_copy_equities(&self, py: Python<'_>, date: String) -> PyResult<String> {
         py.allow_threads(|| {
+            self.ensure_session()?;
             capitalmarket::bhav_copy_equities(&self.client, &date)
         })
     }
 
     fn equity_list(&self, py: Python<'_>) -> PyResult<String> {
         py.allow_threads(|| {
+            self.ensure_session()?;
             capitalmarket::equity_list(&self.client)
         })
     }
 
     fn bulk_deal_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<String> {
         py.allow_threads(|| {
+            self.ensure_session()?;
             capitalmarket::bulk_deal_data(&self.client, &from_date, &to_date)
         })
     }
 
     fn block_deals_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<String> {
         py.allow_threads(|| {
+            self.ensure_session()?;
             capitalmarket::block_deals_data(&self.client, &from_date, &to_date)
         })
     }
 
     fn nifty50_equity_list(&self, py: Python<'_>) -> PyResult<String> {
         py.allow_threads(|| {
+            self.ensure_session()?;
             capitalmarket::nifty50_equity_list(&self.client)
         })
     }
