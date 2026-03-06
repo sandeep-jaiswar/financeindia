@@ -50,7 +50,7 @@ jobs:
         run: |
           sudo add-apt-repository universe
           sudo apt-get update
-          sudo apt-get install -y gcc-powerpc64le-linux-gnu libc6-dev-powerpc64le-cross
+          sudo apt-get install -y gcc-powerpc64le-linux-gnu crossbuild-essential-ppc64el
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
