@@ -23,6 +23,8 @@ jobs:
     env:
       CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
       CFLAGS_armv7_unknown_linux_gnueabihf: "-D__ARM_ARCH=7"
+      CFLAGS_powerpc64le_unknown_linux_gnu: "--sysroot=/usr/powerpc64le-linux-gnu"
+      CC_powerpc64le_unknown_linux_gnu: "powerpc64le-linux-gnu-gcc"
     strategy:
       matrix:
         platform:
@@ -43,6 +45,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: 3.x
+      - name: Install powerpc64le cross toolchain
+        if: matrix.platform.target == 'ppc64le'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-powerpc64le-linux-gnu libc6-dev-powerpc64le-cross
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -132,7 +139,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: 3.x
+          python-version: 3.13
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
