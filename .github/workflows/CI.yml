@@ -20,6 +20,9 @@ permissions:
 jobs:
   linux:
     runs-on: ${{ matrix.platform.runner }}
+    env:
+      CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
+      CFLAGS_armv7_unknown_linux_gnueabihf: "-D__ARM_ARCH=7"
     strategy:
       matrix:
         platform:
