@@ -4,10 +4,37 @@ build-backend = "maturin"
 
 [project]
 name = "financeindia"
+description = "A high-performance, lightweight Python library written in Rust for fetching Indian financial market data (NSE)."
+authors = [
+    { name = "sandeep jaiswar" }
+]
+license = { file = "LICENSE" }
+readme = "README.md"
 requires-python = ">=3.8"
+keywords = ["finance", "nse", "india", "trading", "stock-market", "xbrl"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Rust",
-    "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
 ]
 dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/sandeep-jaiswar/financeindia"
+Repository = "https://github.com/sandeep-jaiswar/financeindia"
+Issues = "https://github.com/sandeep-jaiswar/financeindia/issues"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "financeindia.financeindia"
+python-packages = ["financeindia"]

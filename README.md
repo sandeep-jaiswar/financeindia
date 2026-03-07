@@ -42,11 +42,23 @@ print(data)
 # Fetch current quote
 quote = client.get_equity_quote("RELIANCE")
 print(json.loads(quote))
+
+# Fetch Corporate Financial Results (Quarterly/Annual)
+# 1. Get metadata representing filings
+results_meta = client.get_financial_results("RELIANCE", "01-01-2024", "07-03-2026", "Annual")
+results = json.loads(results_meta)
+
+# 2. Parse the XBRL detail for a specific filing
+if results:
+    xbrl_url = results[0]['xbrl']
+    financial_details = client.get_financial_details(xbrl_url)
+    print(json.loads(financial_details)) # Exhaustive financial data points
 ```
 
 ## Features
 
 - **Capital Markets**: Equity lists (All & Nifty 50), historical price/volume, deliverable positions.
+- **Financial Results (Advanced)**: Exhaustive XBRL parsing for Quarterly and Annual results, providing 500+ data points including Balance Sheets and P&L.
 - **Bulk & Block Deals**: Track large institutional trades.
 - **Bhavcopy**: Full daily trading data in UDiFF format.
 - **Indices**: Comprehensive list of all NSE indices and their constituents.

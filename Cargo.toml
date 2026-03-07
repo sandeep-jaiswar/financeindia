@@ -1,7 +1,11 @@
 [package]
 name = "financeindia"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
+description = "A high-performance, lightweight Python library written in Rust for fetching Indian financial market data (NSE)."
+license = "MIT"
+homepage = "https://github.com/sandeep-jaiswar/financeindia"
+repository = "https://github.com/sandeep-jaiswar/financeindia"
 
 [lib]
 name = "financeindia"
@@ -15,3 +19,5 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 chrono = "0.4"
 zip = "2.2"
 percent-encoding = "2.3"
+quick-xml = "0.37"
+serde_json = "1.0"

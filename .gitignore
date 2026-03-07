@@ -11,6 +11,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 .venv/
+.env
 env/
 bin/
 build/
@@ -70,7 +71,4 @@ docs/_build/
 
 # Pyenv
 .python-version
-
-# examples
-examples/
 
