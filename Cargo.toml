@@ -2,6 +2,10 @@
 name = "financeindia"
 version = "0.1.0-alpha.1"
 edition = "2024"
+description = "A high-performance, lightweight Python library written in Rust for fetching Indian financial market data (NSE)."
+license = "MIT"
+homepage = "https://github.com/sandeep-jaiswar/financeindia"
+repository = "https://github.com/sandeep-jaiswar/financeindia"
 
 [lib]
 name = "financeindia"
