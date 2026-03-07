@@ -15,3 +15,5 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 chrono = "0.4"
 zip = "2.2"
 percent-encoding = "2.3"
+quick-xml = "0.37"
+serde_json = "1.0"

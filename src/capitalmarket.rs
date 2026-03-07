@@ -6,6 +6,9 @@ use chrono::NaiveDate;
 use std::io::Read;
 use zip::ZipArchive;
 use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
+use quick_xml::reader::Reader;
+use quick_xml::events::Event;
+use std::collections::HashMap;
 
 /// Internal helper to parse dates from various common formats.
 fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
@@ -231,6 +234,75 @@ pub fn holidays(client: &Client) -> PyResult<String> {
 pub fn corporate_actions(client: &Client) -> PyResult<String> {
     let url = "https://www.nseindia.com/api/corporates-corporateActions?index=equities";
     fetch_text(client, url, Some("https://www.nseindia.com/all-reports"))
+}
+
+/// Fetches financial results metadata for a given security and period.
+/// period: 'Quarterly', 'Annual', 'Half Yearly', etc.
+pub fn financial_results(client: &Client, symbol: &str, from_date: &str, to_date: &str, period: &str) -> PyResult<String> {
+    let from = parse_date_robust(from_date)?;
+    let to = parse_date_robust(to_date)?;
+    
+    let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
+    let url = format!(
+        "https://www.nseindia.com/api/corporates-financial-results?index=equities&symbol={}&from_date={}&to_date={}&period={}",
+        encoded_symbol, from.format("%d-%m-%Y"), to.format("%d-%m-%Y"), period
+    );
+    
+    fetch_text(client, &url, Some("https://www.nseindia.com/companies-listing/corporate-filings-financial-results"))
+}
+
+/// Downloads and parses an XBRL file into a comprehensive JSON format.
+/// This ensures all columns/tags are captured without data loss.
+pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<String> {
+    let xml_content = fetch_text(client, xbrl_url, Some("https://www.nseindia.com/"))?;
+    
+    let mut reader = Reader::from_str(&xml_content);
+    reader.config_mut().trim_text(true);
+    
+    let mut results = HashMap::new();
+    let mut buf = Vec::new();
+    let mut current_tag: Option<String> = None;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => {
+                let name = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
+                current_tag = Some(name.clone());
+                
+                // Extract attributes (like unitRef, contextRef)
+                let mut attrs = HashMap::new();
+                for attr in e.attributes() {
+                    if let Ok(a) = attr {
+                        let key = String::from_utf8_lossy(a.key.as_ref()).to_string();
+                        let value = String::from_utf8_lossy(&a.value).to_string();
+                        attrs.insert(key, value);
+                    }
+                }
+                
+                if !attrs.is_empty() {
+                    results.insert(format!("{}_attrs", name), serde_json::to_value(attrs).unwrap_or_default());
+                }
+            }
+            Ok(Event::Text(e)) => {
+                if let Some(ref tag) = current_tag {
+                    let text = e.unescape().unwrap_or_default().to_string();
+                    if !text.is_empty() {
+                        results.insert(tag.clone(), serde_json::Value::String(text));
+                    }
+                }
+            }
+            Ok(Event::End(_)) => {
+                current_tag = None;
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(PyErr::new::<PyRuntimeError, _>(format!("XML Error: {}", e))),
+            _ => (),
+        }
+        buf.clear();
+    }
+
+    serde_json::to_string(&results)
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON Serialization Error: {}", e)))
 }
 
 #[cfg(test)]

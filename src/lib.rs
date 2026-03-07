@@ -213,6 +213,24 @@ impl FinanceClient {
             capitalmarket::corporate_actions(&self.client)
         })
     }
+
+    /// Fetches financial results metadata for a given symbol and period.
+    /// period: 'Quarterly', 'Annual', 'Half Yearly', etc.
+    fn get_financial_results(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String, period: String) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::financial_results(&self.client, &symbol, &from_date, &to_date, &period)
+        })
+    }
+
+    /// Downloads and parses an XBRL file from a given URL into a JSON string.
+    /// Use this on the 'xbrl' field from get_financial_results.
+    fn get_financial_details(&self, py: Python<'_>, xbrl_url: String) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::parse_xbrl_data(&self.client, &xbrl_url)
+        })
+    }
 }
 
 #[pymodule]
