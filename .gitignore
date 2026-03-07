@@ -71,7 +71,3 @@ docs/_build/
 # Pyenv
 .python-version
 
-# examples
-examples/
-*.db
-
