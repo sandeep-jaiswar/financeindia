@@ -9,10 +9,8 @@ use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
 
 /// Internal helper to parse dates from various common formats.
 fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
-    let clean = date.replace("-", "").replace("/", "");
-    
     // Try formats in order of likelihood
-    let formats = ["%d%m%Y", "%Y%m%d", "%d-%m-%Y", "%Y-%m-%d"];
+    let formats = ["%d-%m-%Y", "%Y-%m-%d", "%d%m%Y", "%Y%m%d"];
     
     for fmt in formats {
         if let Ok(d) = NaiveDate::parse_from_str(date, fmt) {
@@ -20,7 +18,8 @@ fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
         }
     }
     
-    // Fallback for cleaned strings
+    // Fallback for cleaned strings if no delimiters matched
+    let clean = date.replace("-", "").replace("/", "");
     if clean.len() == 8 {
         if clean.starts_with("20") || clean.starts_with("19") {
             if let Ok(d) = NaiveDate::parse_from_str(&clean, "%Y%m%d") {
@@ -33,7 +32,7 @@ fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
         }
     }
 
-    Err(PyErr::new::<PyRuntimeError, _>(format!(
+    Err(PyErr::new::<PyValueError, _>(format!(
         "Invalid date format: '{}'. Supported: DD-MM-YYYY, DDMMYYYY, YYYY-MM-DD, YYYYMMDD.", 
         date
     )))
@@ -47,13 +46,13 @@ fn fetch_text(client: &Client, url: &str, referer: Option<&str>) -> PyResult<Str
     }
     
     let response = rb.send()
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Network error: {}", e)))?;
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Network error while fetching {}: {}", url, e)))?;
         
     let checked = response.error_for_status()
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("HTTP error: {}", e)))?;
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("HTTP error {} for {}", e.status().unwrap_or_default(), url)))?;
         
     checked.text()
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to read response body: {}", e)))
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to read response body from {}: {}", url, e)))
 }
 
 /// Fetches historical price and volume data for a given security.
@@ -174,6 +173,64 @@ pub fn block_deals_data(client: &Client, from_date: &str, to_date: &str) -> PyRe
 pub fn nifty50_equity_list(client: &Client) -> PyResult<String> {
     let url = "https://nsearchives.nseindia.com/content/indices/ind_nifty50list.csv";
     fetch_text(client, url, None)
+}
+
+/// Fetches all market indices.
+pub fn all_indices(client: &Client) -> PyResult<String> {
+    let url = "https://www.nseindia.com/api/allIndices";
+    fetch_text(client, url, Some("https://www.nseindia.com/all-reports"))
+}
+
+/// Fetches constituents of a specific index.
+pub fn index_constituents(client: &Client, index: &str) -> PyResult<String> {
+    let encoded_index = percent_encode(index.as_bytes(), NON_ALPHANUMERIC).to_string();
+    let url = format!("https://www.nseindia.com/api/equity-stockIndices?index={}", encoded_index);
+    fetch_text(client, &url, Some("https://www.nseindia.com/all-reports"))
+}
+
+/// Fetches top gainers.
+pub fn top_gainers(client: &Client) -> PyResult<String> {
+    let url = "https://www.nseindia.com/api/live-analysis-variations?index=gainers";
+    fetch_text(client, url, Some("https://www.nseindia.com/all-reports"))
+}
+
+/// Fetches top losers.
+pub fn top_losers(client: &Client) -> PyResult<String> {
+    let url = "https://www.nseindia.com/api/live-analysis-variations?index=loosers";
+    fetch_text(client, url, Some("https://www.nseindia.com/all-reports"))
+}
+
+/// Fetches most active securities.
+pub fn most_active(client: &Client, mode: &str) -> PyResult<String> {
+    let url = format!("https://www.nseindia.com/api/live-analysis-most-active-securities?index={}", mode);
+    fetch_text(client, &url, Some("https://www.nseindia.com/all-reports"))
+}
+
+/// Fetches a detailed quote for an equity symbol.
+pub fn equity_quote(client: &Client, symbol: &str) -> PyResult<String> {
+    let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
+    let url = format!("https://www.nseindia.com/api/quote-equity?symbol={}", encoded_symbol);
+    fetch_text(client, &url, Some(&format!("https://www.nseindia.com/get-quotes/equity?symbol={}", encoded_symbol)))
+}
+
+/// Fetches option chain data.
+pub fn option_chain(client: &Client, symbol: &str, is_index: bool) -> PyResult<String> {
+    let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
+    let api_type = if is_index { "indices" } else { "equities" };
+    let url = format!("https://www.nseindia.com/api/option-chain-{}?symbol={}", api_type, encoded_symbol);
+    fetch_text(client, &url, Some(&format!("https://www.nseindia.com/option-chain?symbol={}", encoded_symbol)))
+}
+
+/// Fetches market holidays.
+pub fn holidays(client: &Client) -> PyResult<String> {
+    let url = "https://www.nseindia.com/api/holiday-master?type=trading";
+    fetch_text(client, url, Some("https://www.nseindia.com/all-reports"))
+}
+
+/// Fetches upcoming corporate actions.
+pub fn corporate_actions(client: &Client) -> PyResult<String> {
+    let url = "https://www.nseindia.com/api/corporates-corporateActions?index=equities";
+    fetch_text(client, url, Some("https://www.nseindia.com/all-reports"))
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ mod capitalmarket;
 #[pyclass]
 struct FinanceClient {
     client: Client,
+    last_refresh: std::sync::Mutex<Option<std::time::Instant>>,
 }
 
 #[pymethods]
@@ -30,14 +31,29 @@ impl FinanceClient {
             .build()
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
 
-        Ok(FinanceClient { client })
+        Ok(FinanceClient { 
+            client, 
+            last_refresh: std::sync::Mutex::new(None) 
+        })
     }
 
+    /// Initializes the background session with NSE. 
+    /// This is recommended to be called once before performing other operations.
     fn _initialize_session(&self, py: Python<'_>) -> PyResult<()> {
         py.allow_threads(|| self._refresh_session())
     }
 
+    /// Refreshes the session if it's older than 15 minutes.
+    /// Internal helper used to ensure cookies are valid before NIA calls.
     fn _refresh_session(&self) -> PyResult<()> {
+        let mut last_refresh = self.last_refresh.lock().unwrap();
+        
+        if let Some(instant) = *last_refresh {
+            if instant.elapsed() < Duration::from_secs(900) {
+                return Ok(());
+            }
+        }
+
         // Must hit the home page first to "bake" the cookies in the Jar
         let response = self.client.get("https://www.nseindia.com/all-reports")
             .send()
@@ -45,9 +61,12 @@ impl FinanceClient {
         
         response.error_for_status()
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+        
+        *last_refresh = Some(std::time::Instant::now());
         Ok(())
     }
 
+    /// Returns the current market status (Open/Closed) for various NSE segments.
     fn get_market_status(&self, py: Python<'_>) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
@@ -64,6 +83,10 @@ impl FinanceClient {
         })
     }
 
+    /// Fetches historical price and volume data for a given security.
+    /// symbol: Stock symbol (e.g., 'RELIANCE')
+    /// from_date: Start date (format: DD-MM-YYYY)
+    /// to_date: End date (format: DD-MM-YYYY)
     fn price_volume_data(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
@@ -71,6 +94,7 @@ impl FinanceClient {
         })
     }
 
+    /// Fetches deliverable position data for a given security.
     fn deliverable_position_data(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
@@ -78,6 +102,7 @@ impl FinanceClient {
         })
     }
 
+    /// Fetches the Equity Bhavcopy (UDiFF format) for a given date.
     fn bhav_copy_equities(&self, py: Python<'_>, date: String) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
@@ -85,6 +110,7 @@ impl FinanceClient {
         })
     }
 
+    /// Fetches the list of all active equities listed on NSE.
     fn equity_list(&self, py: Python<'_>) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
@@ -92,6 +118,7 @@ impl FinanceClient {
         })
     }
 
+    /// Fetches bulk deal data for a specific date range.
     fn bulk_deal_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
@@ -99,6 +126,7 @@ impl FinanceClient {
         })
     }
 
+    /// Fetches block deals data for a specific date range.
     fn block_deals_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
@@ -106,10 +134,83 @@ impl FinanceClient {
         })
     }
 
+    /// Fetches the list of Nifty 50 constituent stocks.
     fn nifty50_equity_list(&self, py: Python<'_>) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
             capitalmarket::nifty50_equity_list(&self.client)
+        })
+    }
+
+    /// Fetches a list of all NSE market indices.
+    fn get_all_indices(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::all_indices(&self.client)
+        })
+    }
+
+    /// Fetches constituent stocks for a given index (e.g., 'NIFTY 50').
+    fn get_index_constituents(&self, py: Python<'_>, index: String) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::index_constituents(&self.client, &index)
+        })
+    }
+
+    /// Fetches top gainers for the current trading day.
+    fn get_top_gainers(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::top_gainers(&self.client)
+        })
+    }
+
+    /// Fetches top losers for the current trading day.
+    fn get_top_losers(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::top_losers(&self.client)
+        })
+    }
+
+    /// Fetches most active securities by 'volume' or 'value'.
+    fn get_most_active(&self, py: Python<'_>, mode: String) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::most_active(&self.client, &mode)
+        })
+    }
+
+    /// Fetches real-time equity quote for a given symbol.
+    fn get_equity_quote(&self, py: Python<'_>, symbol: String) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::equity_quote(&self.client, &symbol)
+        })
+    }
+
+    /// Fetches option chain data for a symbol or index.
+    fn get_option_chain(&self, py: Python<'_>, symbol: String, is_index: bool) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::option_chain(&self.client, &symbol, is_index)
+        })
+    }
+
+    /// Fetches market holidays for the current year.
+    fn get_holidays(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::holidays(&self.client)
+        })
+    }
+
+    /// Fetches upcoming corporate actions (Dividends, Splits, etc.).
+    fn get_corporate_actions(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            capitalmarket::corporate_actions(&self.client)
         })
     }
 }
