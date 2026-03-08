@@ -192,6 +192,6 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
       - name: Publish to PyPI
-        run: uv publish 'wheels-*/*'
+        run: uv publish --check-url https://upload.pypi.org/legacy/ 'wheels-*/*'
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
