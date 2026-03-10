@@ -3,6 +3,7 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use reqwest::blocking::Client;
 use reqwest::header::{REFERER, ACCEPT};
 use chrono::NaiveDate;
+use bytes::Bytes;
 use std::time::Duration;
 use std::thread;
 
@@ -36,8 +37,8 @@ pub fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
     )))
 }
 
-/// Internal helper to execute a GET request with retries and handle errors.
-pub fn fetch_text(client: &Client, url: &str, referer: Option<&str>) -> PyResult<String> {
+/// Internal helper to execute a GET request and return raw bytes.
+pub fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> PyResult<Bytes> {
     let mut last_error = String::new();
     let mut delay = Duration::from_millis(500);
 
@@ -50,7 +51,7 @@ pub fn fetch_text(client: &Client, url: &str, referer: Option<&str>) -> PyResult
         match rb.send() {
             Ok(resp) => {
                 match resp.error_for_status() {
-                    Ok(checked) => return checked.text().map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string())),
+                    Ok(checked) => return checked.bytes().map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string())),
                     Err(e) => {
                         last_error = format!("HTTP error {} for {}", e.status().unwrap_or_default(), url);
                         if e.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS) || e.status().map(|s| s.is_server_error()).unwrap_or(false) {
@@ -73,6 +74,35 @@ pub fn fetch_text(client: &Client, url: &str, referer: Option<&str>) -> PyResult
     Err(PyErr::new::<PyRuntimeError, _>(format!("Failed after 3 attempts. Last error: {}", last_error)))
 }
 
+/// Internal helper to execute a GET request and return text.
+pub fn fetch_text(client: &Client, url: &str, referer: Option<&str>) -> PyResult<String> {
+    let bytes = fetch_bytes(client, url, referer)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Helper to parse CSV string into a Python list of dicts directly.
+pub fn parse_csv_to_py(py: Python<'_>, csv_text: &str) -> PyResult<PyObject> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .flexible(true)
+        .from_reader(csv_text.as_bytes());
+
+    let headers = reader.headers()
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("CSV Header Error: {}", e)))?
+        .clone();
+
+    let list = pyo3::types::PyList::empty(py);
+    for result in reader.records() {
+        let record = result.map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("CSV Record Error: {}", e)))?;
+        let dict = pyo3::types::PyDict::new(py);
+        for (header, field) in headers.iter().zip(record.iter()) {
+            dict.set_item(header, field)?;
+        }
+        list.append(dict)?;
+    }
+
+    Ok(list.to_object(py))
+}
 
 /// Helper to parse CSV string into a list of dicts (JSON string for now).
 pub fn parse_csv_to_json(csv_text: &str) -> PyResult<String> {

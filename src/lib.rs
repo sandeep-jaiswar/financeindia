@@ -1,8 +1,10 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
+use pyo3::IntoPyObjectExt;
 use reqwest::blocking::{Client, ClientBuilder};
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT, ACCEPT, ACCEPT_LANGUAGE, CACHE_CONTROL, PRAGMA};
 use std::time::Duration;
+use std::sync::RwLock;
 
 mod common;
 mod equities;
@@ -12,21 +14,21 @@ mod slb;
 mod macro_data;
 mod corporate;
 
-/// Helper to convert recursive serde_json::Value to PyObject
+/// Helper to convert recursive serde_json::Value to PyObject using Bound types for efficiency.
 fn to_py_obj(py: Python<'_>, value: serde_json::Value) -> PyResult<PyObject> {
     match value {
         serde_json::Value::Null => Ok(py.None()),
-        serde_json::Value::Bool(b) => Ok(b.to_object(py)),
+        serde_json::Value::Bool(b) => b.into_py_any(py),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                Ok(i.to_object(py))
+                i.into_py_any(py)
             } else if let Some(f) = n.as_f64() {
-                Ok(f.to_object(py))
+                f.into_py_any(py)
             } else {
-                Ok(n.to_string().to_object(py))
+                n.to_string().into_py_any(py)
             }
         }
-        serde_json::Value::String(s) => Ok(s.to_object(py)),
+        serde_json::Value::String(s) => s.into_py_any(py),
         serde_json::Value::Array(v) => {
             let list = pyo3::types::PyList::empty(py);
             for item in v {
@@ -47,7 +49,7 @@ fn to_py_obj(py: Python<'_>, value: serde_json::Value) -> PyResult<PyObject> {
 #[pyclass]
 struct FinanceClient {
     client: Client,
-    last_refresh: std::sync::Mutex<Option<std::time::Instant>>,
+    last_refresh: RwLock<Option<std::time::Instant>>,
 }
 
 #[pymethods]
@@ -64,13 +66,16 @@ impl FinanceClient {
         let client = ClientBuilder::new()
             .default_headers(headers)
             .cookie_store(true)
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(15))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(20)
+            .tcp_keepalive(Duration::from_secs(60))
             .build()
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
 
         Ok(FinanceClient { 
             client, 
-            last_refresh: std::sync::Mutex::new(None) 
+            last_refresh: RwLock::new(None) 
         })
     }
 
@@ -79,12 +84,23 @@ impl FinanceClient {
     }
 
     fn _refresh_session(&self) -> PyResult<()> {
-        let mut last_refresh = self.last_refresh.lock().unwrap();
+        {
+            let last_refresh = self.last_refresh.read().unwrap();
+            if let Some(instant) = *last_refresh {
+                if instant.elapsed() < Duration::from_secs(900) {
+                    return Ok(());
+                }
+            }
+        }
+        
+        let mut last_refresh = self.last_refresh.write().unwrap();
+        // Double-check after acquiring write lock
         if let Some(instant) = *last_refresh {
             if instant.elapsed() < Duration::from_secs(900) {
                 return Ok(());
             }
         }
+
         let response = self.client.get("https://www.nseindia.com/all-reports")
             .send()
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
@@ -143,10 +159,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = equities::price_volume_data(&self.client, &symbol, &from_date, &to_date)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -155,10 +168,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = equities::deliverable_position_data(&self.client, &symbol, &from_date, &to_date)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -167,10 +177,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = equities::bhav_copy_equities(&self.client, &date)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -179,10 +186,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = equities::equity_list(&self.client)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -191,10 +195,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = equities::bulk_deal_data(&self.client, &from_date, &to_date)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -203,10 +204,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = equities::block_deals_data(&self.client, &from_date, &to_date)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -215,10 +213,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = equities::short_selling_data(&self.client, &from_date, &to_date)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -373,10 +368,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = derivatives::bhav_copy_derivatives(&self.client, &date, &segment)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -396,10 +388,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = derivatives::span_margins(&self.client, &date)?;
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -443,11 +432,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let csv_str = slb::slb_bhavcopy(&self.client, &date)?;
-            // SLB DAT is often CSV-like, attempting parse
-            let json_str = common::parse_csv_to_json(&csv_str)?;
-            let value: serde_json::Value = serde_json::from_str(&json_str)
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-            Python::with_gil(|py| to_py_obj(py, value))
+            Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
 
@@ -455,12 +440,12 @@ impl FinanceClient {
     // --- Granular Equity Reports ---
 
     // --- Granular Macro Reports ---
-    /// Returns exhaustive FII statistics record for a given date.
+    /// Returns FII/DII activity statistics (XLS format).
     fn get_fii_stats(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            let raw_str = macro_data::fii_stats(&self.client, &date)?;
-            Python::with_gil(|py| Ok(raw_str.to_object(py)))
+            let bytes = macro_data::fii_stats(&self.client, &date)?;
+            Python::with_gil(|py| Ok(pyo3::types::PyBytes::new(py, &bytes).to_object(py)))
         })
     }
 

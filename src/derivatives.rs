@@ -64,7 +64,7 @@ pub fn fo_sec_ban(client: &Client) -> PyResult<String> {
 
 
 
-/// Fetches SPAN margins (zip file).
+/// Fetches SPAN margins (zip file containing a CSV/DAT).
 pub fn span_margins(client: &Client, date: &str) -> PyResult<String> {
     let d = parse_date_robust(date)?;
     // Pattern: https://nsearchives.nseindia.com/archives/nsccl/span/nsccl.20260309.i1.zip
@@ -72,7 +72,25 @@ pub fn span_margins(client: &Client, date: &str) -> PyResult<String> {
         "https://nsearchives.nseindia.com/archives/nsccl/span/nsccl.{}.i1.zip",
         d.format("%Y%m%d")
     );
-    fetch_text(client, &url, Some("https://www.nseindia.com/all-reports-derivatives"))
+    
+    let bytes = crate::common::fetch_bytes(client, &url, Some("https://www.nseindia.com/all-reports-derivatives"))?;
+    
+    let reader = std::io::Cursor::new(bytes);
+    let mut archive = ZipArchive::new(reader)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to open zip archive: {}", e)))?;
+
+    if archive.len() == 0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Zip archive is empty"));
+    }
+
+    let mut file = archive.by_index(0)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to get file from zip: {}", e)))?;
+
+    let mut content = String::new();
+    file.read_to_string(&mut content)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to read file content: {}", e)))?;
+
+    Ok(content)
 }
 
 
