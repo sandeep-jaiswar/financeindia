@@ -15,7 +15,7 @@ We take the security of `financeindia` seriously. If you believe you have found 
 
 **Please do not report security vulnerabilities via public GitHub issues.**
 
-Instead, please send an email to the maintainer: [jaiswarsandeep119@gmail.com](mailto:jaiswarsandeep119@gmail.com) (Note: Replace with your actual security contact email).
+Instead, please send an email to: [security@nseindia.com](mailto:security@nseindia.com)
 
 You should receive a response within 48 hours. If the issue is confirmed, we will coordinate a fix and a release before making a public disclosure.
 

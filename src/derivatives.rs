@@ -1,9 +1,7 @@
 use pyo3::prelude::*;
 use reqwest::blocking::Client;
-use reqwest::header::REFERER;
-use std::io::Read;
-use zip::ZipArchive;
-use crate::common::{parse_date_robust, fetch_text};
+use crate::common::{parse_date_robust, fetch_text, fetch_bytes, read_first_text_file_from_zip};
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 /// Fetches the F&O Bhavcopy for a given date.
 pub fn bhav_copy_derivatives(client: &Client, date: &str, segment: &str) -> PyResult<String> {
@@ -20,39 +18,18 @@ pub fn bhav_copy_derivatives(client: &Client, date: &str, segment: &str) -> PyRe
         seg_code.to_lowercase(), prefix, d.format("%Y%m%d")
     );
     
-    let response = client.get(&url)
-        .header(REFERER, "https://www.nseindia.com/all-reports-derivatives")
-        .send()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Network error: {}", e)))?;
-
-    let checked = response.error_for_status()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("HTTP error: {}", e)))?;
-
-    let bytes = checked.bytes()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to read response bytes: {}", e)))?;
-
-    let reader = std::io::Cursor::new(bytes);
-    let mut archive = ZipArchive::new(reader)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to open zip archive: {}", e)))?;
-
-    if archive.len() == 0 {
-        return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Zip archive is empty"));
-    }
-
-    let mut file = archive.by_index(0)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to get file from zip: {}", e)))?;
-
-    let mut content = String::new();
-    file.read_to_string(&mut content)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to read file content: {}", e)))?;
-
-    Ok(content)
+    let bytes = fetch_bytes(client, &url, Some("https://www.nseindia.com/all-reports-derivatives"))?;
+    read_first_text_file_from_zip(bytes)
 }
 
 /// Fetches the option chain for a given symbol.
 pub fn option_chain(client: &Client, symbol: &str, is_index: bool) -> PyResult<String> {
     let api_type = if is_index { "indices" } else { "equities" };
-    let url = format!("https://www.nseindia.com/api/option-chain-{}?symbol={}", api_type, symbol);
+    let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
+    let url = format!(
+        "https://www.nseindia.com/api/option-chain-{}?symbol={}",
+        api_type, encoded_symbol
+    );
     fetch_text(client, &url, Some("https://www.nseindia.com/option-chain"))
 }
 
@@ -73,28 +50,6 @@ pub fn span_margins(client: &Client, date: &str) -> PyResult<String> {
         d.format("%Y%m%d")
     );
     
-    let bytes = crate::common::fetch_bytes(client, &url, Some("https://www.nseindia.com/all-reports-derivatives"))?;
-    
-    let reader = std::io::Cursor::new(bytes);
-    let mut archive = ZipArchive::new(reader)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to open zip archive: {}", e)))?;
-
-    if archive.len() == 0 {
-        return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Zip archive is empty"));
-    }
-
-    let mut file = archive.by_index(0)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to get file from zip: {}", e)))?;
-
-    let mut content = String::new();
-    file.read_to_string(&mut content)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to read file content: {}", e)))?;
-
-    Ok(content)
+    let bytes = fetch_bytes(client, &url, Some("https://www.nseindia.com/all-reports-derivatives"))?;
+    read_first_text_file_from_zip(bytes)
 }
-
-
-
-
-
-

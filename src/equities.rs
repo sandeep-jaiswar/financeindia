@@ -1,10 +1,7 @@
 use pyo3::prelude::*;
 use reqwest::blocking::Client;
-use reqwest::header::REFERER;
-use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
-use std::io::Read;
-use zip::ZipArchive;
-use crate::common::{parse_date_robust, fetch_text};
+use crate::common::{parse_date_robust, fetch_text, fetch_bytes, read_first_text_file_from_zip};
+use percent_encoding::{percent_encode, utf8_percent_encode, NON_ALPHANUMERIC};
 
 /// Fetches the Equity Bhavcopy (UDiFF format) for a given date.
 pub fn bhav_copy_equities(client: &Client, date: &str) -> PyResult<String> {
@@ -14,33 +11,8 @@ pub fn bhav_copy_equities(client: &Client, date: &str) -> PyResult<String> {
         d.format("%Y%m%d")
     );
     
-    let response = client.get(&url)
-        .header(REFERER, "https://www.nseindia.com/all-reports")
-        .send()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Network error: {}", e)))?;
-
-    let checked = response.error_for_status()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("HTTP error: {}", e)))?;
-
-    let bytes = checked.bytes()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to read response bytes: {}", e)))?;
-
-    let reader = std::io::Cursor::new(bytes);
-    let mut archive = ZipArchive::new(reader)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to open zip archive: {}", e)))?;
-
-    if archive.len() == 0 {
-        return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Zip archive is empty"));
-    }
-
-    let mut file = archive.by_index(0)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to get file from zip: {}", e)))?;
-
-    let mut content = String::new();
-    file.read_to_string(&mut content)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to read file content: {}", e)))?;
-
-    Ok(content)
+    let bytes = fetch_bytes(client, &url, Some("https://www.nseindia.com/all-reports"))?;
+    read_first_text_file_from_zip(bytes)
 }
 
 /// Fetches historical price and volume data for a given security.
@@ -99,6 +71,18 @@ pub fn advances_declines(client: &Client) -> PyResult<String> {
 /// Fetches monthly settlement statistics.
 pub fn monthly_settlement_stats(client: &Client, fin_year: &str) -> PyResult<String> {
     // fin_year format: YYYY-YYYY
+    let parts: Vec<&str> = fin_year.split('-').collect();
+    if parts.len() != 2 || parts[0].len() != 4 || parts[1].len() != 4 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid fin_year format. Expected YYYY-YYYY (e.g., 2024-2025)."));
+    }
+    
+    let y1: u32 = parts[0].parse().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid start year"))?;
+    let y2: u32 = parts[1].parse().map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid end year"))?;
+    
+    if y2 != y1 + 1 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid financial year. End year must be Start year + 1."));
+    }
+
     let url = format!(
         "https://www.nseindia.com/api/historicalOR/monthly-sett-stats-data?finYear={}",
         fin_year
@@ -118,7 +102,8 @@ pub fn fifty_two_week_high_low(client: &Client, mode: &str) -> PyResult<String> 
 
 /// Fetches most active securities.
 pub fn most_active(client: &Client, mode: &str) -> PyResult<String> {
-    let url = format!("https://www.nseindia.com/api/live-analysis-most-active-securities?index={}", mode);
+    let encoded_mode = utf8_percent_encode(mode, NON_ALPHANUMERIC).to_string();
+    let url = format!("https://www.nseindia.com/api/live-analysis-most-active-securities?index={}", encoded_mode);
     fetch_text(client, &url, Some("https://www.nseindia.com/all-reports"))
 }
 

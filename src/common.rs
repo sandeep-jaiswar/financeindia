@@ -9,7 +9,7 @@ use std::thread;
 
 /// Internal helper to parse dates from various common formats.
 pub fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
-    let formats = ["%d-%m-%Y", "%Y-%m-%d", "%d%m%Y", "%Y%m%d", "%d-%b-%Y", "%d%b%Y", "%b-%Y", "%m-%Y"];
+    let formats = ["%d-%m-%Y", "%Y-%m-%d", "%d%m%Y", "%Y%m%d", "%d-%b-%Y", "%d%b%Y"];
     
     let clean = date.replace("/", "-");
     for fmt in formats {
@@ -77,7 +77,7 @@ pub fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> PyResul
 /// Internal helper to execute a GET request and return text.
 pub fn fetch_text(client: &Client, url: &str, referer: Option<&str>) -> PyResult<String> {
     let bytes = fetch_bytes(client, url, referer)?;
-    Ok(String::from_utf8_lossy(&bytes).into_owned())
+    String::from_utf8(bytes.to_vec()).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("UTF-8 error for {}: {}", url, e)))
 }
 
 /// Helper to parse CSV string into a Python list of dicts directly.
@@ -102,5 +102,32 @@ pub fn parse_csv_to_py(py: Python<'_>, csv_text: &str) -> PyResult<PyObject> {
     }
 
     Ok(list.into_any().unbind())
+}
+
+/// Shared helper to extract the first non-directory file from a ZIP archive as a String.
+pub fn read_first_text_file_from_zip(bytes: bytes::Bytes) -> PyResult<String> {
+    let reader = std::io::Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(reader)
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to open zip archive: {}", e)))?;
+
+    if archive.len() == 0 {
+        return Err(PyErr::new::<PyRuntimeError, _>("Zip archive is empty"));
+    }
+
+    // Find the first file that is not a directory
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)
+            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to get file from zip index {}: {}", i, e)))?;
+        
+        if !file.is_dir() {
+            let mut content = String::new();
+            use std::io::Read;
+            file.read_to_string(&mut content)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Failed to read zip entry {}: {}", file.name(), e)))?;
+            return Ok(content);
+        }
+    }
+
+    Err(PyErr::new::<PyRuntimeError, _>("No valid files found in ZIP archive"))
 }
 

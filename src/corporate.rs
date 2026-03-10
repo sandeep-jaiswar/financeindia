@@ -66,14 +66,18 @@ pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<String> {
             }
             Ok(Event::Text(e)) => {
                 if let Some(ref tag) = current_tag {
-                    let text = e.unescape().unwrap_or_default().to_string();
-                    if !text.is_empty() {
-                        let mut fact = serde_json::Map::new();
-                        fact.insert("value".to_string(), serde_json::Value::String(text));
-                        if !current_attrs.is_empty() {
-                            fact.insert("attrs".to_string(), serde_json::to_value(&current_attrs).unwrap_or_default());
+                    if let Ok(unescaped) = e.unescape() {
+                        let text = unescaped.to_string();
+                        if !text.is_empty() {
+                            let mut fact = serde_json::Map::new();
+                            fact.insert("value".to_string(), serde_json::Value::String(text));
+                            if !current_attrs.is_empty() {
+                                fact.insert("attrs".to_string(), serde_json::to_value(&current_attrs).unwrap_or_default());
+                            }
+                            results.entry(tag.clone()).or_insert_with(Vec::new).push(serde_json::Value::Object(fact));
                         }
-                        results.entry(tag.clone()).or_insert_with(Vec::new).push(serde_json::Value::Object(fact));
+                    } else {
+                        // For now, we skip malformed text as per desired robust behavior
                     }
                 }
             }

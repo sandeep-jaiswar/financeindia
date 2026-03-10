@@ -22,7 +22,7 @@ pub fn fii_stats(client: &Client, date: &str) -> PyResult<Vec<u8>> {
 
 /// Fetches market turnover.
 pub fn market_turnover(client: &Client) -> PyResult<String> {
-    let url = "https://www.nseindia.com/api/marketStatus";
+    let url = "https://www.nseindia.com/api/market-turnover-popup";
     fetch_text(client, url, Some("https://www.nseindia.com/all-reports"))
 }
 
