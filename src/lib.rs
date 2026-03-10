@@ -435,7 +435,7 @@ impl FinanceClient {
             Python::with_gil(|py| common::parse_csv_to_py(py, &csv_str))
         })
     }
-
+    
 
     // --- Granular Equity Reports ---
 
