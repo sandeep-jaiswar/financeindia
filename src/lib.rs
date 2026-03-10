@@ -34,14 +34,14 @@ fn to_py_obj(py: Python<'_>, value: serde_json::Value) -> PyResult<PyObject> {
             for item in v {
                 list.append(to_py_obj(py, item)?)?;
             }
-            Ok(list.to_object(py))
+            Ok(list.clone().into_any().unbind())
         }
         serde_json::Value::Object(m) => {
             let dict = pyo3::types::PyDict::new(py);
             for (k, v) in m {
                 dict.set_item(k, to_py_obj(py, v)?)?;
             }
-            Ok(dict.to_object(py))
+            Ok(dict.clone().into_any().unbind())
         }
     }
 }
@@ -445,7 +445,7 @@ impl FinanceClient {
         py.allow_threads(|| {
             self._refresh_session()?;
             let bytes = macro_data::fii_stats(&self.client, &date)?;
-            Python::with_gil(|py| Ok(pyo3::types::PyBytes::new(py, &bytes).to_object(py)))
+            Python::with_gil(|py| Ok(pyo3::types::PyBytes::new(py, &bytes).into_any().unbind()))
         })
     }
 

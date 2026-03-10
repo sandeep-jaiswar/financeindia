@@ -101,29 +101,6 @@ pub fn parse_csv_to_py(py: Python<'_>, csv_text: &str) -> PyResult<PyObject> {
         list.append(dict)?;
     }
 
-    Ok(list.to_object(py))
+    Ok(list.into_any().unbind())
 }
 
-/// Helper to parse CSV string into a list of dicts (JSON string for now).
-pub fn parse_csv_to_json(csv_text: &str) -> PyResult<String> {
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .flexible(true)
-        .from_reader(csv_text.as_bytes());
-
-    let headers = reader.headers()
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("CSV Header Error: {}", e)))?
-        .clone();
-
-    let mut records = Vec::new();
-    for result in reader.records() {
-        let record = result.map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("CSV Record Error: {}", e)))?;
-        let mut map = serde_json::Map::new();
-        for (header, field) in headers.iter().zip(record.iter()) {
-            map.insert(header.to_string(), serde_json::Value::String(field.to_string()));
-        }
-        records.push(serde_json::Value::Object(map));
-    }
-
-    serde_json::to_string(&records).map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))
-}
