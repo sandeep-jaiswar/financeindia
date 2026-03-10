@@ -1,9 +1,48 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
 use reqwest::blocking::{Client, ClientBuilder};
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT, ACCEPT, ACCEPT_LANGUAGE, REFERER, CACHE_CONTROL, PRAGMA};
+use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT, ACCEPT, ACCEPT_LANGUAGE, CACHE_CONTROL, PRAGMA};
 use std::time::Duration;
-mod capitalmarket;
+
+mod common;
+mod equities;
+mod indices;
+mod derivatives;
+mod slb;
+mod macro_data;
+mod corporate;
+
+/// Helper to convert recursive serde_json::Value to PyObject
+fn to_py_obj(py: Python<'_>, value: serde_json::Value) -> PyResult<PyObject> {
+    match value {
+        serde_json::Value::Null => Ok(py.None()),
+        serde_json::Value::Bool(b) => Ok(b.to_object(py)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i.to_object(py))
+            } else if let Some(f) = n.as_f64() {
+                Ok(f.to_object(py))
+            } else {
+                Ok(n.to_string().to_object(py))
+            }
+        }
+        serde_json::Value::String(s) => Ok(s.to_object(py)),
+        serde_json::Value::Array(v) => {
+            let list = pyo3::types::PyList::empty(py);
+            for item in v {
+                list.append(to_py_obj(py, item)?)?;
+            }
+            Ok(list.to_object(py))
+        }
+        serde_json::Value::Object(m) => {
+            let dict = pyo3::types::PyDict::new(py);
+            for (k, v) in m {
+                dict.set_item(k, to_py_obj(py, v)?)?;
+            }
+            Ok(dict.to_object(py))
+        }
+    }
+}
 
 #[pyclass]
 struct FinanceClient {
@@ -16,8 +55,6 @@ impl FinanceClient {
     #[new]
     fn new() -> PyResult<Self> {
         let mut headers = HeaderMap::new();
-        
-        // Exact headers from your working example
         headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"));
         headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
         headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US,en;q=0.9"));
@@ -37,200 +74,397 @@ impl FinanceClient {
         })
     }
 
-    /// Initializes the background session with NSE. 
-    /// This is recommended to be called once before performing other operations.
     fn _initialize_session(&self, py: Python<'_>) -> PyResult<()> {
         py.allow_threads(|| self._refresh_session())
     }
 
-    /// Refreshes the session if it's older than 15 minutes.
-    /// Internal helper used to ensure cookies are valid before NIA calls.
     fn _refresh_session(&self) -> PyResult<()> {
         let mut last_refresh = self.last_refresh.lock().unwrap();
-        
         if let Some(instant) = *last_refresh {
             if instant.elapsed() < Duration::from_secs(900) {
                 return Ok(());
             }
         }
-
-        // Must hit the home page first to "bake" the cookies in the Jar
         let response = self.client.get("https://www.nseindia.com/all-reports")
             .send()
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-        
         response.error_for_status()
             .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-        
         *last_refresh = Some(std::time::Instant::now());
         Ok(())
     }
 
-    /// Returns the current market status (Open/Closed) for various NSE segments.
-    fn get_market_status(&self, py: Python<'_>) -> PyResult<String> {
+    /// Returns the current market status for all segments.
+    fn get_market_status(&self, py: Python<'_>) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            let response = self.client.get("https://www.nseindia.com/api/marketStatus")
-                .header(REFERER, "https://www.nseindia.com/all-reports")
-                .send()
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-
-            let checked_response = response.error_for_status()
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-
-            checked_response.text()
-                .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))
+            let json_str = macro_data::market_status(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches historical price and volume data for a given security.
-    /// symbol: Stock symbol (e.g., 'RELIANCE')
-    /// from_date: Start date (format: DD-MM-YYYY)
-    /// to_date: End date (format: DD-MM-YYYY)
-    fn price_volume_data(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String) -> PyResult<String> {
+    /// Returns the market holiday calendar for the current year.
+    fn get_holidays(&self, py: Python<'_>) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::price_volume_data(&self.client, &symbol, &from_date, &to_date)
+            let json_str = macro_data::holidays(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches deliverable position data for a given security.
-    fn deliverable_position_data(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String) -> PyResult<String> {
+    /// Returns FII and DII trading activity for the most recent day.
+    fn get_fii_dii_activity(&self, py: Python<'_>) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::deliverable_position_data(&self.client, &symbol, &from_date, &to_date)
+            let json_str = macro_data::fii_dii_activity(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches the Equity Bhavcopy (UDiFF format) for a given date.
-    fn bhav_copy_equities(&self, py: Python<'_>, date: String) -> PyResult<String> {
+    /// Returns the summarized market turnover across segments.
+    fn get_market_turnover(&self, py: Python<'_>) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::bhav_copy_equities(&self.client, &date)
+            let json_str = macro_data::market_turnover(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches the list of all active equities listed on NSE.
-    fn equity_list(&self, py: Python<'_>) -> PyResult<String> {
+    /// Returns historical price and volume data for a given security.
+    fn price_volume_data(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::equity_list(&self.client)
+            let csv_str = equities::price_volume_data(&self.client, &symbol, &from_date, &to_date)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches bulk deal data for a specific date range.
-    fn bulk_deal_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<String> {
+    /// Returns deliverable position data for a given security.
+    fn deliverable_position_data(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::bulk_deal_data(&self.client, &from_date, &to_date)
+            let csv_str = equities::deliverable_position_data(&self.client, &symbol, &from_date, &to_date)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches block deals data for a specific date range.
-    fn block_deals_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<String> {
+    /// Returns the Equity Bhavcopy (all records) for a given date.
+    fn bhav_copy_equities(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::block_deals_data(&self.client, &from_date, &to_date)
+            let csv_str = equities::bhav_copy_equities(&self.client, &date)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches the list of Nifty 50 constituent stocks.
-    fn nifty50_equity_list(&self, py: Python<'_>) -> PyResult<String> {
+    /// Returns a list of all active equities listed on NSE.
+    fn get_equity_list(&self, py: Python<'_>) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::nifty50_equity_list(&self.client)
+            let csv_str = equities::equity_list(&self.client)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches a list of all NSE market indices.
-    fn get_all_indices(&self, py: Python<'_>) -> PyResult<String> {
+    /// Returns bulk deal data for a specific date range.
+    fn bulk_deal_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::all_indices(&self.client)
+            let csv_str = equities::bulk_deal_data(&self.client, &from_date, &to_date)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches constituent stocks for a given index (e.g., 'NIFTY 50').
-    fn get_index_constituents(&self, py: Python<'_>, index: String) -> PyResult<String> {
+    /// Returns block deals data for a specific date range.
+    fn block_deals_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::index_constituents(&self.client, &index)
+            let csv_str = equities::block_deals_data(&self.client, &from_date, &to_date)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches top gainers for the current trading day.
-    fn get_top_gainers(&self, py: Python<'_>) -> PyResult<String> {
+    /// Returns short selling data for a specific date range.
+    fn short_selling_data(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::top_gainers(&self.client)
+            let csv_str = equities::short_selling_data(&self.client, &from_date, &to_date)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches top losers for the current trading day.
-    fn get_top_losers(&self, py: Python<'_>) -> PyResult<String> {
+    /// Returns 52-week high or low stock records.
+    fn get_52week_high_low(&self, py: Python<'_>, mode: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::top_losers(&self.client)
+            let json_str = equities::fifty_two_week_high_low(&self.client, &mode)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches most active securities by 'volume' or 'value'.
-    fn get_most_active(&self, py: Python<'_>, mode: String) -> PyResult<String> {
+    /// Returns the top gainers for the current market state.
+    fn get_top_gainers(&self, py: Python<'_>) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::most_active(&self.client, &mode)
+            let json_str = equities::top_gainers(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches real-time equity quote for a given symbol.
+    /// Returns the top losers for the current market state.
+    fn get_top_losers(&self, py: Python<'_>) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = equities::top_losers(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Returns the most active securities for a given index.
+    fn get_most_active(&self, py: Python<'_>, mode: String) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = equities::most_active(&self.client, &mode)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Returns the advances and declines count for all indices.
+    fn get_advances_declines(&self, py: Python<'_>) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = equities::advances_declines(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    fn get_monthly_settlement_stats(&self, py: Python<'_>, fin_year: String) -> PyResult<String> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            equities::monthly_settlement_stats(&self.client, &fin_year)
+        })
+    }
+
     fn get_equity_quote(&self, py: Python<'_>, symbol: String) -> PyResult<String> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::equity_quote(&self.client, &symbol)
+            equities::equity_quote(&self.client, &symbol)
         })
     }
 
-    /// Fetches option chain data for a symbol or index.
-    fn get_option_chain(&self, py: Python<'_>, symbol: String, is_index: bool) -> PyResult<String> {
+    /// Returns a list of all NSE market indices and their current values.
+    fn get_all_indices(&self, py: Python<'_>) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::option_chain(&self.client, &symbol, is_index)
+            let json_str = indices::all_indices(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches market holidays for the current year.
-    fn get_holidays(&self, py: Python<'_>) -> PyResult<String> {
+    /// Returns constituent stocks for a specific index (e.g., 'NIFTY 50').
+    fn get_index_constituents(&self, py: Python<'_>, index: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::holidays(&self.client)
+            let json_str = indices::index_constituents(&self.client, &index)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches upcoming corporate actions (Dividends, Splits, etc.).
-    fn get_corporate_actions(&self, py: Python<'_>) -> PyResult<String> {
+    /// Returns historical OHLCV data for a specific index.
+    fn get_index_history(&self, py: Python<'_>, index: String, from_date: String, to_date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::corporate_actions(&self.client)
+            let json_str = indices::index_history(&self.client, &index, &from_date, &to_date)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Fetches financial results metadata for a given symbol and period.
-    /// period: 'Quarterly', 'Annual', 'Half Yearly', etc.
-    fn get_financial_results(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String, period: String) -> PyResult<String> {
+    /// Returns P/E, P/B and Dividend Yield for a specific index.
+    fn get_index_yield(&self, py: Python<'_>, index: String, from_date: String, to_date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::financial_results(&self.client, &symbol, &from_date, &to_date, &period)
+            let json_str = indices::index_yield(&self.client, &index, &from_date, &to_date)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
 
-    /// Downloads and parses an XBRL file from a given URL into a JSON string.
-    /// Use this on the 'xbrl' field from get_financial_results.
-    fn get_financial_details(&self, py: Python<'_>, xbrl_url: String) -> PyResult<String> {
+    /// Returns historical India VIX values.
+    fn get_india_vix_history(&self, py: Python<'_>, from_date: String, to_date: String) -> PyResult<PyObject> {
         py.allow_threads(|| {
             self._refresh_session()?;
-            capitalmarket::parse_xbrl_data(&self.client, &xbrl_url)
+            let json_str = indices::india_vix_history(&self.client, &from_date, &to_date)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
         })
     }
+
+    /// Returns Total Returns Index (TRI) historical data.
+    fn get_total_returns_index(&self, py: Python<'_>, index: String, from_date: String, to_date: String) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = indices::total_returns_index(&self.client, &index, &from_date, &to_date)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Returns the option chain for a given symbol (Index or Equity).
+    fn get_option_chain(&self, py: Python<'_>, symbol: String, is_index: bool) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = derivatives::option_chain(&self.client, &symbol, is_index)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Returns the Derivatives (F&O) Bhavcopy for a given date and segment.
+    fn bhav_copy_derivatives(&self, py: Python<'_>, date: String, segment: String) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let csv_str = derivatives::bhav_copy_derivatives(&self.client, &date, &segment)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Returns the list of securities currently in the F&O Ban period.
+    fn get_fo_sec_ban(&self, py: Python<'_>) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = derivatives::fo_sec_ban(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Returns the SPAN margins for a given date.
+    fn get_span_margins(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let csv_str = derivatives::span_margins(&self.client, &date)?;
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+
+
+    /// Returns upcoming corporate actions like dividends, splits, etc.
+    fn get_corporate_actions(&self, py: Python<'_>) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = corporate::corporate_actions(&self.client)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Returns financial results metadata for a specific security.
+    fn get_financial_results(&self, py: Python<'_>, symbol: String, from_date: String, to_date: String, period: String) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = corporate::financial_results(&self.client, &symbol, &from_date, &to_date, &period)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Parses financial statement data from an XBRL URL provided by NSE.
+    fn get_financial_details(&self, py: Python<'_>, xbrl_url: String) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let json_str = corporate::parse_xbrl_data(&self.client, &xbrl_url)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+    /// Returns the SLB (Securities Lending & Borrowing) Bhavcopy for a given date.
+    fn get_slb_bhavcopy(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let csv_str = slb::slb_bhavcopy(&self.client, &date)?;
+            // SLB DAT is often CSV-like, attempting parse
+            let json_str = common::parse_csv_to_json(&csv_str)?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)
+                .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
+            Python::with_gil(|py| to_py_obj(py, value))
+        })
+    }
+
+
+    // --- Granular Equity Reports ---
+
+    // --- Granular Macro Reports ---
+    /// Returns exhaustive FII statistics record for a given date.
+    fn get_fii_stats(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
+        py.allow_threads(|| {
+            self._refresh_session()?;
+            let raw_str = macro_data::fii_stats(&self.client, &date)?;
+            Python::with_gil(|py| Ok(raw_str.to_object(py)))
+        })
+    }
+
+    // --- Granular Derivative Reports ---
 }
 
 #[pymodule]
