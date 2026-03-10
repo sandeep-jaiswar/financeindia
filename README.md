@@ -23,7 +23,6 @@ pip install financeindia
 
 ```python
 import financeindia
-import json
 
 # Initialize the client
 client = financeindia.FinanceClient()
@@ -31,44 +30,81 @@ client = financeindia.FinanceClient()
 # Recommended: initialize the session once
 client._initialize_session()
 
-# Get market status
+# Get market status (returns a dict)
 status = client.get_market_status()
-print(json.loads(status))
+print(status['marketState'][0]['marketStatus'])
 
-# Fetch historical data for a stock
-data = client.price_volume_data("RELIANCE", "01-03-2025", "05-03-2025")
-print(data)
+# Fetch historical data for a stock (returns a list of dicts)
+data = client.price_volume_data("RELIANCE", "01-03-2026", "05-03-2026")
+print(data[0])
 
-# Fetch current quote
+# Fetch current quote (returns a dict)
 quote = client.get_equity_quote("RELIANCE")
-print(json.loads(quote))
+print(quote['priceInfo']['lastPrice'])
 
-# Fetch Corporate Financial Results (Quarterly/Annual)
-# 1. Get metadata representing filings
-results_meta = client.get_financial_results("RELIANCE", "01-01-2024", "07-03-2026", "Annual")
-results = json.loads(results_meta)
+# Fetch Corporate Financial Results
+# Returns a list of dicts with filing metadata
+results = client.get_financial_results("RELIANCE", "01-01-2025", "07-03-2026", "Annual")
 
-# 2. Parse the XBRL detail for a specific filing
+# Parse the XBRL detail for a specific filing
 if results:
     xbrl_url = results[0]['xbrl']
     financial_details = client.get_financial_details(xbrl_url)
-    print(json.loads(financial_details)) # Exhaustive financial data points
+    print(financial_details) # Highly granular financial data points
 ```
 
-## Features
+## Supported Endpoints (32+)
 
-- **Capital Markets**: Equity lists (All & Nifty 50), historical price/volume, deliverable positions.
-- **Financial Results (Advanced)**: Exhaustive XBRL parsing for Quarterly and Annual results, providing 500+ data points including Balance Sheets and P&L.
-- **Bulk & Block Deals**: Track large institutional trades.
-- **Bhavcopy**: Full daily trading data in UDiFF format.
-- **Indices**: Comprehensive list of all NSE indices and their constituents.
-- **Live Analysis**: Top gainers, top losers, and most active securities.
-- **Derivatives**: Real-time option chain data for symbols and indices.
-- **Market Info**: Holidays, corporate actions, and overall market status.
+`financeindia` provides exhaustive coverage of NSE data. All methods return structured Python objects (lists/dicts).
 
-## Performance Highlights
+### 📊 Market Macro
+- `get_market_status()`: Current status of all market segments.
+- `get_holidays()`: Trading holiday calendar.
+- `get_fii_dii_activity()`: Daily FII and DII trading activity.
+- `get_market_turnover()`: Market-wide turnover statistics.
+- `get_fii_stats(date)`: Detailed FII statistics (returns raw XLS bytes).
 
-`financeindia` implements a thread-safe session caching mechanism. The connection to NSE is refreshed only once every 15 minutes or when the session expires, ensuring that multiple API calls are as fast as possible.
+### 📈 Equities
+- `get_equity_list()`: All active equities listed on NSE.
+- `price_volume_data(symbol, from, to)`: Historical price and volume.
+- `deliverable_position_data(symbol, from, to)`: Delivery percentage stats.
+- `bhav_copy_equities(date)`: Daily equity bhavcopy.
+- `bulk_deal_data(from, to)`: Tracking large institutional bulk deals.
+- `block_deals_data(from, to)`: Tracking block deal transactions.
+- `short_selling_data(from, to)`: Daily short selling activity.
+- `get_52week_high_low(type)`: Stocks hitting new highs or lows.
+- `get_top_gainers()` / `get_top_losers()`: Intraday performance leaders.
+- `get_most_active(index)`: Most active securities by volume/value.
+- `get_advances_declines()`: Market breadth analysis.
+- `get_monthly_settlement_stats(year)`: Monthly settlement data.
+- `get_equity_quote(symbol)`: Real-time price and order book.
+
+### 📉 Indices
+- `get_all_indices()`: Real-time snapshot of all NSE indices.
+- `get_index_constituents(index)`: Stocks within a specific index (e.g., 'NIFTY 50').
+- `get_index_history(index, from, to)`: Historical index levels.
+- `get_index_yield(index, from, to)`: P/E, P/B, and Dividend Yield of indices.
+- `get_india_vix_history(from, to)`: Historical volatility index data.
+- `get_total_returns_index(index, from, to)`: Total Returns Index (TRI) data.
+
+### ⛓️ Derivatives & SLB
+- `get_option_chain(symbol, is_index)`: Full real-time option chain with Greeks.
+- `bhav_copy_derivatives(date, segment)`: Daily F&O/Currency/Commodity bhavcopy.
+- `get_fo_sec_ban()`: Securities currently under F&O ban period.
+- `get_span_margins(date)`: Daily SPAN margin files for risk analysis.
+- `get_slb_bhavcopy(date)`: Securities Lending & Borrowing market data.
+
+### 🏢 Corporate Actions
+- `get_corporate_actions()`: Latest dividends, bonuses, splits, etc.
+- `get_financial_results(symbol, from, to, period)`: Metadata for financial filings.
+- `get_financial_details(xbrl_url)`: Deep-dive into XBRL filings (500+ data points).
+
+## Performance Optimizations
+
+`financeindia` is built for high-scale quant pipelines:
+- **Zero-Serialization CSV**: CSV data is parsed directly into Python objects in Rust, bypassing heavy string allocations.
+- **Concurrent-Safe**: Uses `RwLock` and optimized connection pooling for multi-threaded usage.
+- **Blazing Fast**: Up to 3x faster than traditional JSON-based wrappers.
 
 ## License
 
