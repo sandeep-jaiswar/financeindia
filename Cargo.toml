@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Use 0.23 for Python 3.13 support
-pyo3 = { version = "0.23", features = ["extension-module"] }
+pyo3 = { version = "0.24", features = ["extension-module"] }
 # Ensure cookies feature is enabled
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "cookies"] }
 chrono = "0.4"
