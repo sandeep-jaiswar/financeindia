@@ -53,7 +53,7 @@ if results:
     print(financial_details) # Highly granular financial data points
 ```
 
-## Supported Endpoints (32+)
+## Supported Endpoints (42+)
 
 `financeindia` provides exhaustive coverage of NSE data. All methods return structured Python objects (lists/dicts).
 
@@ -63,6 +63,11 @@ if results:
 - `get_fii_dii_activity()`: Daily FII and DII trading activity.
 - `get_market_turnover()`: Market-wide turnover statistics.
 - `get_fii_stats(date)`: Detailed FII statistics (returns raw XLS bytes).
+
+### 🔍 Surveillance & Monitoring
+- `get_asm_stocks()`: Additional Surveillance Measure (ASM) stocks (Long & Short term).
+- `get_gsm_stocks()`: Graded Surveillance Measure (GSM) list.
+- `get_short_ban_stocks()`: Filtered list of stocks under short-term surveillance.
 
 ### 📈 Equities
 - `get_equity_list()`: All active equities listed on NSE.
@@ -87,17 +92,26 @@ if results:
 - `get_india_vix_history(from, to)`: Historical volatility index data.
 - `get_total_returns_index(index, from, to)`: Total Returns Index (TRI) data.
 
-### ⛓️ Derivatives & SLB
+### ⛓️ Derivatives
 - `get_option_chain(symbol, is_index)`: Full real-time option chain with Greeks.
 - `bhav_copy_derivatives(date, segment)`: Daily F&O/Currency/Commodity bhavcopy.
-- `get_fo_sec_ban()`: Securities currently under F&O ban period.
+- `get_fo_sec_ban()`: Current F&O ban list (JSON).
+- `get_fo_ban_list(date)`: Historical F&O ban list (CSV).
 - `get_span_margins(date)`: Daily SPAN margin files for risk analysis.
-- `get_slb_bhavcopy(date)`: Securities Lending & Borrowing market data.
+- `get_oi_limits_cli(date)`: Daily Client wise OI Limit (LST).
+- `get_participant_volume(date)`: Participant wise trading volumes.
+
+### 🤝 Securities Lending & Borrowing (SLB)
+- `get_slb_bhavcopy(date)`: Daily SLB market bhavcopy.
+- `get_slb_eligible()`: Real-time list of securities available for SLB.
+- `get_slb_open_positions(series)`: Open positions analysis for a specific month.
+- `get_slb_series_master()`: Helper to find active SLB series/months.
 
 ### 🏢 Corporate Actions
 - `get_corporate_actions()`: Latest dividends, bonuses, splits, etc.
 - `get_financial_results(symbol, from, to, period)`: Metadata for financial filings.
 - `get_financial_details(xbrl_url)`: Deep-dive into XBRL filings (500+ data points).
+- `get_insider_trades(from, to)`: Detailed PIT (Prohibition of Insider Trading) disclosures.
 
 ## Performance Optimizations
 

@@ -69,6 +69,13 @@ jobs:
           args: --release --out dist --zig --compatibility manylinux_2_34 -i python3.13
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
+      - name: Test Wheel Import
+        if: matrix.platform.target == 'x86_64'
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-index --find-links dist financeindia
+          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -97,6 +104,13 @@ jobs:
           args: --release --out dist --zig -i python3.13
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: musllinux_1_2
+
+      - name: Test Wheel Import
+        if: matrix.platform.target == 'x86_64'
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-index --find-links dist financeindia
+          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -132,6 +146,13 @@ jobs:
           args: --release --out dist -i python3.13
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
+      - name: Test Wheel Import
+        if: matrix.platform.target == 'x64'
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-index --find-links dist financeindia
+          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -159,6 +180,12 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Test Wheel Import
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-index --find-links dist financeindia
+          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6

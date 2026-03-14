@@ -1,50 +1,67 @@
-use pyo3::prelude::*;
+use crate::common::{fetch_text, parse_date_robust};
+use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
-use reqwest::blocking::Client;
-use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
-use quick_xml::reader::Reader;
+use pyo3::prelude::*;
 use quick_xml::events::Event;
+use quick_xml::reader::Reader;
+use reqwest::blocking::Client;
 use std::collections::HashMap;
-use crate::common::{parse_date_robust, fetch_text};
 
 /// Fetches financial results metadata.
-pub fn financial_results(client: &Client, symbol: &str, from_date: &str, to_date: &str, period: &str) -> PyResult<String> {
+pub fn financial_results(
+    client: &Client,
+    symbol: &str,
+    from_date: &str,
+    to_date: &str,
+    period: &str,
+) -> PyResult<bytes::Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
     let encoded_period = percent_encode(period.as_bytes(), NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/corporates-financial-results?index=equities&symbol={}&from_date={}&to_date={}&period={}",
-        encoded_symbol, from.format("%d-%m-%Y"), to.format("%d-%m-%Y"), encoded_period
+        encoded_symbol,
+        from.format(crate::common::NSE_DATE_FMT),
+        to.format(crate::common::NSE_DATE_FMT),
+        encoded_period
     );
-    fetch_text(client, &url, Some("https://www.nseindia.com/companies-listing/corporate-filings-financial-results"))
+    fetch_text(
+        client,
+        &url,
+        Some("https://www.nseindia.com/companies-listing/corporate-filings-financial-results"),
+    )
 }
 
 /// Fetches upcoming corporate actions.
-pub fn corporate_actions(client: &Client) -> PyResult<String> {
+pub fn corporate_actions(client: &Client) -> PyResult<bytes::Bytes> {
     let url = "https://www.nseindia.com/api/corporates-corporateActions?index=equities";
-    fetch_text(client, url, Some("https://www.nseindia.com/all-reports"))
+    fetch_text(client, url, Some(crate::common::NSE_ALL_REPORTS_URL))
 }
 
 /// Downloads and parses an XBRL file into JSON.
-pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<String> {
+pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes::Bytes> {
     // SSRF Validation
     let url = reqwest::Url::parse(xbrl_url)
         .map_err(|e| PyErr::new::<PyValueError, _>(format!("Invalid URL: {}", e)))?;
-    
+
     if url.scheme() != "https" {
         return Err(PyErr::new::<PyValueError, _>("Only HTTPS URLs are allowed"));
     }
-    
+
     let host = url.host_str().unwrap_or_default();
     if !host.ends_with(".nseindia.com") && host != "nseindia.com" {
-        return Err(PyErr::new::<PyValueError, _>("URL host must be a trusted NSE domain"));
+        return Err(PyErr::new::<PyValueError, _>(
+            "URL host must be a trusted NSE domain",
+        ));
     }
 
-    let xml_content = fetch_text(client, xbrl_url, Some("https://www.nseindia.com/"))?;
-    let mut reader = Reader::from_str(&xml_content);
+    let xml_bytes = fetch_text(client, xbrl_url, Some("https://www.nseindia.com/"))?;
+    let xml_str = String::from_utf8(xml_bytes.to_vec())
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("UTF-8 Error: {}", e)))?;
+    let mut reader = Reader::from_str(&xml_str);
     reader.config_mut().trim_text(true);
-    
+
     let mut results: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
     let mut buf = Vec::new();
     let mut current_tag: Option<String> = None;
@@ -72,21 +89,48 @@ pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<String> {
                             let mut fact = serde_json::Map::new();
                             fact.insert("value".to_string(), serde_json::Value::String(text));
                             if !current_attrs.is_empty() {
-                                fact.insert("attrs".to_string(), serde_json::to_value(&current_attrs).unwrap_or_default());
+                                fact.insert(
+                                    "attrs".to_string(),
+                                    serde_json::to_value(&current_attrs).unwrap_or_default(),
+                                );
                             }
-                            results.entry(tag.clone()).or_insert_with(Vec::new).push(serde_json::Value::Object(fact));
+                            results
+                                .entry(tag.clone())
+                                .or_insert_with(Vec::new)
+                                .push(serde_json::Value::Object(fact));
                         }
                     } else {
                         // For now, we skip malformed text as per desired robust behavior
                     }
                 }
             }
-            Ok(Event::End(_)) => { current_tag = None; current_attrs.clear(); }
+            Ok(Event::End(_)) => {
+                current_tag = None;
+                current_attrs.clear();
+            }
             Ok(Event::Eof) => break,
             Err(e) => return Err(PyErr::new::<PyRuntimeError, _>(format!("XML Error: {}", e))),
             _ => (),
         }
         buf.clear();
     }
-    serde_json::to_string(&results).map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON Serialization Error: {}", e)))
+    serde_json::to_vec(&results)
+        .map(|v| bytes::Bytes::from(v))
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON Serialization Error: {}", e)))
+}
+
+/// Fetches insider trades (PIT) data for a given date range.
+pub fn insider_trades(client: &Client, from_date: &str, to_date: &str) -> PyResult<bytes::Bytes> {
+    let from = parse_date_robust(from_date)?;
+    let to = parse_date_robust(to_date)?;
+    let url = format!(
+        "https://www.nseindia.com/api/corporates-pit?index=equities&from_date={}&to_date={}",
+        from.format(crate::common::NSE_DATE_FMT),
+        to.format(crate::common::NSE_DATE_FMT)
+    );
+    fetch_text(
+        client,
+        &url,
+        Some("https://www.nseindia.com/companies-listing/corporate-filings-insider-trading"),
+    )
 }
