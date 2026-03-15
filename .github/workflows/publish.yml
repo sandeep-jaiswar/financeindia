@@ -67,7 +67,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-index --find-links dist financeindia
-          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -90,6 +90,10 @@ jobs:
             target: armv7
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        if: matrix.platform.target == 'x86_64'
+        with:
+          python-version: "3.13.11"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -103,7 +107,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-index --find-links dist financeindia
-          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -144,7 +148,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-index --find-links dist financeindia
-          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          set PYTHONPATH=&& python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -178,7 +182,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-index --find-links dist financeindia
-          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6

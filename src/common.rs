@@ -15,6 +15,8 @@ pub const NSE_ALL_REPORTS_URL: &str = "https://www.nseindia.com/all-reports";
 pub const NSE_DATE_FMT: &str = "%d-%m-%Y";
 pub const SESSION_REFRESH_INTERVAL: Duration = Duration::from_secs(900);
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
+pub const MAX_RESPONSE_SIZE: usize = 50 * 1024 * 1024; // 50 MB
+pub const MAX_DECOMPRESSED_ENTRY_SIZE: u64 = 50 * 1024 * 1024; // 50 MB
 const MAX_RETRIES: u32 = 3;
 
 /// Common helper to build a pre-configured NSE-compatible HTTP Client.
@@ -96,24 +98,48 @@ pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> F
         match rb.send().await {
             Ok(resp) => match resp.error_for_status() {
                 Ok(checked) => {
+                    let mut accumulated_size = 0;
                     if let Some(len) = checked.content_length() {
-                        if len > 50 * 1024 * 1024 {
+                        if len > MAX_RESPONSE_SIZE as u64 {
                             return Err(FinanceError::Runtime(format!(
-                                "Response from {} exceeded 50 MB limit",
-                                url
+                                "Response from {} exceeded {} MB limit",
+                                url, MAX_RESPONSE_SIZE / (1024 * 1024)
                             )));
                         }
+                        accumulated_size = len as usize;
                     }
-                    match checked.bytes().await {
-                        Ok(b) => return Ok(b),
-                        Err(e) => {
-                            last_error = format!(
-                                "Error reading body from {} on attempt {}: {}",
-                                url, attempt, e
-                            );
-                            sleep(delay).await;
-                            delay *= 2;
+
+                    if accumulated_size > 0 {
+                        match checked.bytes().await {
+                            Ok(b) => return Ok(b),
+                            Err(e) => {
+                                last_error = format!(
+                                    "Error reading body from {} on attempt {}: {}",
+                                    url, attempt, e
+                                );
+                                sleep(delay).await;
+                                delay *= 2;
+                            }
                         }
+                    } else {
+                        // Stream the body for unknown-length responses to enforce the limit
+                        let mut buf = Vec::new();
+                        use futures_util::StreamExt;
+                        let mut stream = checked.bytes_stream();
+                        while let Some(chunk_res) = stream.next().await {
+                            let chunk = chunk_res.map_err(|e: reqwest::Error| {
+                                FinanceError::Runtime(format!("Chunk stream error from {}: {}", url, e))
+                            })?;
+                            accumulated_size += chunk.len();
+                            if accumulated_size > MAX_RESPONSE_SIZE {
+                                return Err(FinanceError::Runtime(format!(
+                                    "Response from {} exceeded {} MB limit",
+                                    url, MAX_RESPONSE_SIZE / (1024 * 1024)
+                                )));
+                            }
+                            buf.extend_from_slice(&chunk);
+                        }
+                        return Ok(Bytes::from(buf));
                     }
                 }
                 Err(e) => {
@@ -201,7 +227,19 @@ pub fn read_first_text_file_from_zip(bytes: Bytes) -> FinanceResult<Bytes> {
         let mut file = archive.by_index(i)?;
         if !file.is_dir() {
             let mut buf = Vec::new();
-            file.read_to_end(&mut buf)?;
+            (&mut file).take(MAX_DECOMPRESSED_ENTRY_SIZE).read_to_end(&mut buf)?;
+            if buf.len() as u64 >= MAX_DECOMPRESSED_ENTRY_SIZE {
+                 // Double check if we actually reached the limit.
+                 // take() doesn't error when reaching the limit, it just stops.
+                 // We can check if there's more data.
+                 let mut probe = [0u8; 1];
+                 if file.read(&mut probe).unwrap_or(0) > 0 {
+                     return Err(FinanceError::Runtime(format!(
+                         "Decompressed ZIP entry exceeded {} MB limit",
+                         MAX_DECOMPRESSED_ENTRY_SIZE / (1024 * 1024)
+                     )));
+                 }
+            }
             return Ok(Bytes::from(buf));
         }
     }

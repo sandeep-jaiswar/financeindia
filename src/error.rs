@@ -20,8 +20,16 @@ pub enum FinanceError {
     UrlParse(#[from] url::ParseError),
     #[error("Python callback error: {0}")]
     Py(String),
+    #[error("Python error: {0}")]
+    PyErr(PyErr),
     #[error("Runtime error: {0}")]
     Runtime(String),
+}
+
+impl From<PyErr> for FinanceError {
+    fn from(err: PyErr) -> Self {
+        FinanceError::PyErr(err)
+    }
 }
 
 impl From<FinanceError> for PyErr {
@@ -35,6 +43,7 @@ impl From<FinanceError> for PyErr {
             FinanceError::Xml(e) => PyValueError::new_err(e.to_string()),
             FinanceError::UrlParse(e) => PyValueError::new_err(e.to_string()),
             FinanceError::Py(s) => PyRuntimeError::new_err(s),
+            FinanceError::PyErr(e) => e,
             FinanceError::Runtime(s) => PyRuntimeError::new_err(s),
         }
     }

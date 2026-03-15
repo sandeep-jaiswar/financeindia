@@ -2,11 +2,11 @@ from typing import List, Dict, Any, Optional, Union, Callable, Awaitable
 from types import TracebackType
 
 class FiiDiiActivity:
-    buy_value: Optional[str]
+    buy_value: Optional[float]
     category: Optional[str]
     date: Optional[str]
-    net_value: Optional[str]
-    sell_value: Optional[str]
+    net_value: Optional[float]
+    sell_value: Optional[float]
 
 class MarketStatus:
     market: Optional[str]
@@ -235,8 +235,8 @@ class AsyncFinanceClient:
     
     # Commodities & MCX
     async def get_live_commodities_market(self) -> Any: ...
-    async def nse_commodities_bhavcopy(self, date: str) -> Dict[str, List[Any]]: ...
-    async def nse_commodities_bhavcopy_raw(self, date: str) -> bytes: ...
+    async def get_nse_commodities_bhavcopy(self, date: str) -> Dict[str, List[Any]]: ...
+    async def get_nse_commodities_bhavcopy_raw(self, date: str) -> bytes: ...
     async def get_mcx_bhavcopy(self, date: str) -> bytes: ...
     
     # Macro

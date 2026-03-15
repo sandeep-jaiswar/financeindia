@@ -66,5 +66,7 @@ def test_slb_endpoints(client):
 
 # Error Handling Exception Tests
 def test_missing_data_exception(client):
-    with pytest.raises(Exception):
+    # An invalid ticker should result in a JSON parsing error (ValueError)
+    # or a ConnectionError if the API returns a non-200 status.
+    with pytest.raises(ValueError):
         client.get_equity_quote("INVALID_TICKER_9999")

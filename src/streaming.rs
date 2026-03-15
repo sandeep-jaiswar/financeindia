@@ -66,14 +66,14 @@ impl MarketStream {
                                 };
                             callback.call1(py, (py_val,))
                         })
-                        .map_err(|e| FinanceError::Py(e.to_string()))?;
+                        .map_err(FinanceError::from)?;
                     } else if msg.is_binary() {
                         let data = msg.into_data();
                         Python::with_gil(|py| {
                             let py_data = pyo3::types::PyBytes::new(py, &data);
                             callback.call1(py, (py_data,))
                         })
-                        .map_err(|e| FinanceError::Py(e.to_string()))?;
+                        .map_err(FinanceError::from)?;
                     }
                 }
                 Ok::<(), FinanceError>(())

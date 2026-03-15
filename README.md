@@ -30,13 +30,13 @@ client = financeindia.FinanceClient()
 # Recommended: initialize the session once
 client._initialize_session()
 
-# Get market status (returns a dict)
+# Get market status (returns a MarketStatusResponse object)
 status = client.get_market_status()
-print(status['marketState'][0]['marketStatus'])
+print(status.market_state[0].status)
 
-# Fetch historical data for a stock (returns a list of dicts)
+# Fetch historical data for a stock (returns a list of PriceVolumeRow objects)
 data = client.price_volume_data("RELIANCE", "01-03-2026", "05-03-2026")
-print(data[0])
+print(data[0].close_price)
 
 # Fetch current quote (returns a dict)
 quote = client.get_equity_quote("RELIANCE")
@@ -55,7 +55,7 @@ if results:
 
 ## Supported Endpoints (42+)
 
-`financeindia` provides exhaustive coverage of NSE data. All methods return structured Python objects (lists/dicts).
+`financeindia` provides exhaustive coverage of NSE data. Methods return typed PyO3 model classes (attribute-accessible objects) and, when applicable, lists of those model instances (e.g., `MarketStatusResponse`, `MarketStatus`, `FiiDiiActivity`, `ASMStock`, `GSMStock`, `Holiday`, `EquityInfo`). See [tests/test_client.py:13](tests/test_client.py#L13) as an example.
 
 ### 📊 Market Macro
 - `get_market_status()`: Current status of all market segments.

@@ -22,18 +22,18 @@ except ImportError:
 def _create_df_wrapper(method_name, is_async=False):
     if is_async:
         async def async_wrapper(self, *args, **kwargs):
-            method = getattr(self, method_name)
-            data = await method(*args, **kwargs)
             if not HAS_POLARS:
                 raise ImportError("polars is required for _df methods. Install with 'pip install polars'")
+            method = getattr(self, method_name)
+            data = await method(*args, **kwargs)
             return pl.from_records(data) if isinstance(data, list) else pl.from_dict(data)
         return async_wrapper
     else:
         def sync_wrapper(self, *args, **kwargs):
-            method = getattr(self, method_name)
-            data = method(*args, **kwargs)
             if not HAS_POLARS:
                 raise ImportError("polars is required for _df methods. Install with 'pip install polars'")
+            method = getattr(self, method_name)
+            data = method(*args, **kwargs)
             return pl.from_records(data) if isinstance(data, list) else pl.from_dict(data)
         return sync_wrapper
 
@@ -54,16 +54,16 @@ for method in TABULAR_METHODS:
         setattr(AsyncFinanceClient, f"{method}_df", _create_df_wrapper(method, is_async=True))
 
 __all__ = [
-    "FinanceClient",
+    "ASMStock",
     "AsyncFinanceClient",
+    "BhavArchive",
+    "EquityInfo",
     "FiiDiiActivity",
+    "FinanceClient",
+    "GSMStock",
+    "Holiday",
     "MarketStatus",
     "MarketStatusResponse",
-    "Holiday",
-    "ASMStock",
-    "GSMStock",
-    "EquityInfo",
-    "PriceVolumeRow",
     "MarketStream",
-    "BhavArchive"
+    "PriceVolumeRow"
 ]

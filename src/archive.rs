@@ -90,6 +90,13 @@ impl BhavArchive {
                 }
 
                 zip.finish().map_err(|e| FinanceError::Runtime(e.to_string()))?;
+
+                if success_count == 0 {
+                    let _ = std::fs::remove_file(path).map_err(|e| {
+                        log::error!("Failed to remove empty archive at {}: {}", output_path, e);
+                    });
+                }
+
                 Ok::<_, FinanceError>((success_count, failed_dates))
             })
             .map_err(PyErr::from)

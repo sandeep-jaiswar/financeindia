@@ -268,14 +268,12 @@ impl FinanceClient {
     }
 
     /// Returns the most active securities for a given index.
-    /// Returns the most active securities for a given index.
     fn get_most_active(&self, py: Python<'_>, mode: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::most_active, &mode)?;
         let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
-    /// Returns the advances and declines count for all indices.
     /// Returns advances and declines counts for all indices.
     fn get_advances_declines(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::advances_declines)?;
@@ -283,7 +281,6 @@ impl FinanceClient {
         Ok(to_py_obj(py, value)?)
     }
 
-    /// Returns monthly settlement statistics for a given financial year.
     /// Returns monthly settlement statistics for a given financial year (format `"YYYY-YYYY"`).
     fn get_monthly_settlement_stats(&self, py: Python<'_>, fin_year: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::monthly_settlement_stats, &fin_year)?;
@@ -665,8 +662,7 @@ impl FinanceClient {
         Ok(pyo3::types::PyBytes::new(py, &bytes).into_any().unbind())
     }
 
-    /// Returns the live Currency Market Status
-    /// Returns the live Currency Derivatives market status.
+    /// Returns the live Currency market status.
     fn get_live_currency_market(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, currency::live_currency_market)?;
         let value = common::parse_json_value(&json_bytes)?;
@@ -679,7 +675,6 @@ impl FinanceClient {
         Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
-    /// Returns the live Commodities Market Status
     /// Returns the live NSE Commodities market status.
     fn get_live_commodities_market(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, commodities::nse_live_commodities_market)?;

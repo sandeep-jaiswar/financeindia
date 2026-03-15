@@ -569,10 +569,21 @@ impl AsyncFinanceClient {
         })
     }
 
+    fn get_oi_limits_cli_raw<'py>(&self, py: Python<'py>, date: String) -> PyResult<Bound<'py, PyAny>> {
+        dispatch_async!(self, py, client, {
+            let bytes = crate::derivatives::oi_client_limits(&client, &date).await?;
+            Python::with_gil(|py| Ok(pyo3::types::PyBytes::new(py, &bytes).into_any().unbind()))
+        })
+    }
+
     fn get_oi_limits_cli<'py>(&self, py: Python<'py>, date: String) -> PyResult<Bound<'py, PyAny>> {
         dispatch_async!(self, py, client, {
-            let content = crate::derivatives::oi_client_limits(&client, &date).await?;
-            Python::with_gil(|py| Ok(content.into_py_any(py)?))
+            let bytes = crate::derivatives::oi_client_limits(&client, &date).await?;
+            Python::with_gil(|py| {
+                let s = String::from_utf8(bytes.to_vec())
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyUnicodeDecodeError, _>(e.to_string()))?;
+                Ok(s.into_py_any(py)?)
+            })
         })
     }
 

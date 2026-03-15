@@ -19,6 +19,7 @@ pub struct FiiDiiActivity {
 #[derive(Debug, Clone, Deserialize)]
 pub struct MarketStatus {
     pub market: Option<String>,
+    #[serde(rename = "marketStatus")]
     pub status: Option<String>,
     #[serde(rename = "lastUpdateTime")]
     pub last_update_time: Option<String>,
@@ -41,6 +42,7 @@ pub struct Holiday {
     pub description: Option<String>,
     #[serde(rename = "tradingDate")]
     pub trading_date: Option<String>,
+    #[serde(rename = "weekDay")]
     pub week_day: Option<String>,
 }
 
