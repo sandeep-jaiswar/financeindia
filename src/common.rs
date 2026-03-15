@@ -1,11 +1,10 @@
+use crate::error::*;
 use bytes::Bytes;
 use chrono::NaiveDate;
 use pyo3::IntoPyObjectExt;
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use reqwest::Client;
 use reqwest::header::{ACCEPT, REFERER};
-use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -16,7 +15,7 @@ pub const SESSION_REFRESH_INTERVAL: Duration = Duration::from_secs(900);
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Common helper to build a pre-configured NSE-compatible HTTP Client.
-pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> PyResult<Client> {
+pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> FinanceResult<Client> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::USER_AGENT,
@@ -47,16 +46,15 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> PyResu
         }
     }
 
-    reqwest::ClientBuilder::new()
+    Ok(reqwest::ClientBuilder::new()
         .default_headers(headers)
         .cookie_store(true)
         .timeout(DEFAULT_TIMEOUT)
-        .build()
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))
+        .build()?)
 }
 
 /// Internal helper to parse dates from various common formats.
-pub fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
+pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
     let formats = [
         NSE_DATE_FMT,
         "%Y-%m-%d",
@@ -86,14 +84,14 @@ pub fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
         }
     }
 
-    Err(PyErr::new::<PyValueError, _>(format!(
+    Err(FinanceError::Runtime(format!(
         "Invalid date format: '{}'. Supported formats like DD-MM-YYYY, YYYY-MM-DD are required.",
         date
     )))
 }
 
 /// Internal helper to execute a GET request and return raw bytes.
-pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> PyResult<Bytes> {
+pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> FinanceResult<Bytes> {
     let mut last_error = String::new();
     let mut delay = Duration::from_millis(500);
 
@@ -108,7 +106,7 @@ pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> P
                 Ok(checked) => {
                     if let Some(len) = checked.content_length() {
                         if len > 50 * 1024 * 1024 {
-                            return Err(PyErr::new::<PyRuntimeError, _>(format!(
+                            return Err(FinanceError::Runtime(format!(
                                 "Response from {} exceeded 50MB limit",
                                 url
                             )));
@@ -136,16 +134,10 @@ pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> P
                         sleep(delay).await;
                         delay *= 2;
                     } else {
-                        return Err(PyErr::new::<PyRuntimeError, _>(last_error));
+                        return Err(FinanceError::Http(e));
                     }
                 }
             },
-            Ok(resp) => {
-                // This branch shouldn't really be reached after error_for_status but for safety:
-                last_error = format!("Unknown error for {} on attempt {}", url, attempt);
-                sleep(delay).await;
-                delay *= 2;
-            }
             Err(e) => {
                 last_error = format!("Network error for {} on attempt {}: {}", url, attempt, e);
                 sleep(delay).await;
@@ -154,16 +146,15 @@ pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> P
         }
     }
 
-    Err(PyErr::new::<PyRuntimeError, _>(format!(
+    Err(FinanceError::Runtime(format!(
         "Failed to fetch data from {} after 3 attempts. {}",
         url, last_error
     )))
 }
 
 /// Shared helper to parse raw JSON bytes into a `serde_json::Value`, mapping errors to Python exceptions.
-pub fn parse_json_value(bytes: &[u8]) -> PyResult<serde_json::Value> {
-    serde_json::from_slice(bytes)
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {e}")))
+pub fn parse_json_value(bytes: &[u8]) -> FinanceResult<serde_json::Value> {
+    Ok(serde_json::from_slice(bytes)?)
 }
 
 /// Helper to parse CSV string into a Columnar Python dictionary (Dict[str, List[Any]]).
@@ -175,7 +166,7 @@ pub fn parse_csv_to_py(py: Python<'_>, csv_bytes: &[u8]) -> PyResult<PyObject> {
 
     let headers = reader
         .headers()
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("CSV Header Error: {}", e)))?
+        .map_err(|e| PyErr::from(FinanceError::Csv(e)))?
         .clone();
 
     // Prepare a vector of Python lists for each column
@@ -186,8 +177,7 @@ pub fn parse_csv_to_py(py: Python<'_>, csv_bytes: &[u8]) -> PyResult<PyObject> {
 
     // Populate columns row by row
     for result in reader.records() {
-        let record = result
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("CSV Record Error: {}", e)))?;
+        let record = result.map_err(|e| PyErr::from(FinanceError::Csv(e)))?;
 
         for (i, field) in record.iter().enumerate() {
             if i < columns.len() {
@@ -206,41 +196,28 @@ pub fn parse_csv_to_py(py: Python<'_>, csv_bytes: &[u8]) -> PyResult<PyObject> {
 }
 
 /// Shared helper to extract the first non-directory file from a ZIP archive as raw Bytes.
-pub fn read_first_text_file_from_zip(bytes: bytes::Bytes) -> PyResult<Bytes> {
+pub fn read_first_text_file_from_zip(bytes: bytes::Bytes) -> FinanceResult<Bytes> {
     let reader = std::io::Cursor::new(bytes);
-    let mut archive = zip::ZipArchive::new(reader).map_err(|e| {
-        PyErr::new::<PyRuntimeError, _>(format!("Failed to open zip archive: {}", e))
-    })?;
+    let mut archive = zip::ZipArchive::new(reader)?;
 
     if archive.len() == 0 {
-        return Err(PyErr::new::<PyRuntimeError, _>("Zip archive is empty"));
+        return Err(FinanceError::Runtime("Zip archive is empty".to_string()));
     }
 
     // Find the first file that is not a directory
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| {
-            PyErr::new::<PyRuntimeError, _>(format!(
-                "Failed to get file from zip index {}: {}",
-                i, e
-            ))
-        })?;
+        let mut file = archive.by_index(i)?;
 
         if !file.is_dir() {
             let mut buf = Vec::new();
             use std::io::Read;
-            file.read_to_end(&mut buf).map_err(|e| {
-                PyErr::new::<PyRuntimeError, _>(format!(
-                    "Failed to read zip entry {}: {}",
-                    file.name(),
-                    e
-                ))
-            })?;
+            file.read_to_end(&mut buf)?;
             return Ok(Bytes::from(buf));
         }
     }
 
-    Err(PyErr::new::<PyRuntimeError, _>(
-        "No valid files found in ZIP archive",
+    Err(FinanceError::Runtime(
+        "No valid files found in ZIP archive".to_string(),
     ))
 }
 
@@ -249,9 +226,8 @@ pub fn parse_json_to_py_typed<'py, T>(py: Python<'py>, json_bytes: &[u8]) -> PyR
 where
     T: for<'de> serde::Deserialize<'de> + IntoPyObject<'py>,
 {
-    let value: T = serde_json::from_slice(json_bytes)
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {}", e)))?;
-    value.into_bound_py_any(py).map(|b| b.unbind())
+    let value: T = serde_json::from_slice(json_bytes).map_err(|e| PyErr::from(FinanceError::Json(e)))?;
+    Ok(value.into_bound_py_any(py)?.unbind())
 }
 
 /// Helper to parse CSV string into a specific typed Python list.
@@ -266,9 +242,7 @@ where
 
     let list = pyo3::types::PyList::empty(py);
     for result in reader.deserialize() {
-        let record: T = result.map_err(|e| {
-            PyErr::new::<PyRuntimeError, _>(format!("CSV Deserialize Error: {}", e))
-        })?;
+        let record: T = result.map_err(|e| PyErr::from(FinanceError::Csv(e)))?;
         list.append(record.into_bound_py_any(py)?)?;
     }
 

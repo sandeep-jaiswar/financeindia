@@ -1,10 +1,10 @@
+use crate::error::{FinanceError, FinanceResult};
 use pyo3::IntoPyObjectExt;
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
 use reqwest::Client;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::RwLock;
 
 #[pyclass]
@@ -17,7 +17,7 @@ impl AsyncFinanceClient {
     async fn _refresh_session_async(
         client: &Client,
         last_refresh: &RwLock<Option<Instant>>,
-    ) -> PyResult<()> {
+    ) -> FinanceResult<()> {
         {
             let lock = last_refresh.read().await;
             if let Some(instant) = *lock {
@@ -37,12 +37,9 @@ impl AsyncFinanceClient {
         let response = client
             .get(crate::common::NSE_ALL_REPORTS_URL)
             .send()
-            .await
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+            .await?;
 
-        response
-            .error_for_status()
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+        response.error_for_status()?;
 
         *lock = Some(Instant::now());
         Ok(())
@@ -57,8 +54,11 @@ macro_rules! dispatch_async {
         let refresh_lock = $self.last_refresh.clone();
         future_into_py($py, async move {
             let $client = &$client;
-            Self::_refresh_session_async($client, &refresh_lock).await?;
-            $body
+            let res: PyResult<_> = async move {
+                Self::_refresh_session_async($client, &refresh_lock).await.map_err(PyErr::from)?;
+                $body
+            }.await;
+            res
         })
     }};
 }
@@ -75,7 +75,7 @@ impl AsyncFinanceClient {
     }
 
     fn _initialize_session<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        dispatch_async!(self, py, client, { Python::with_gil(|py| Ok(().into_py_any(py)?)) })
+        dispatch_async!(self, py, client, Python::with_gil(|py| Ok(().into_py_any(py).map_err(|e| FinanceError::Py(e.to_string()))?)))
     }
 
     fn get_market_status<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -723,14 +723,10 @@ impl AsyncFinanceClient {
 
     fn get_short_ban_stocks<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         dispatch_async!(self, py, client, {
-            let json_bytes = crate::surveillance::asm_stocks(&client).await?;
+            let json_bytes = crate::derivatives::fo_sec_ban(&client).await?;
             Python::with_gil(|py| {
-                let mut value = crate::common::parse_json_value(&json_bytes)?;
-                if let Some(shortterm) = value.get_mut("shortterm") {
-                    crate::to_py_obj(py, shortterm.take())
-                } else {
-                    crate::to_py_obj(py, serde_json::json!([]))
-                }
+                let value = crate::common::parse_json_value(&json_bytes)?;
+                crate::to_py_obj(py, value)
             })
         })
     }

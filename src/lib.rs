@@ -6,10 +6,9 @@
 //! including equities, derivatives, indices, and corporate actions.
 
 use pyo3::IntoPyObjectExt;
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use reqwest::Client;
-use std::sync::{Arc, RwLock};
+use std::sync::{RwLock, OnceLock};
 use std::time::Duration;
 
 mod archive;
@@ -19,22 +18,23 @@ mod common;
 mod corporate;
 mod currency;
 mod derivatives;
+mod error;
 mod equities;
 mod indices;
 mod models;
 mod slb;
 mod streaming;
 
-use std::sync::atomic::AtomicUsize;
+use crate::error::*;
 
-static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
 fn runtime() -> &'static tokio::runtime::Runtime {
     RT.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .unwrap()
+            .expect("Failed to build Tokio runtime")
     })
 }
 
@@ -89,7 +89,7 @@ struct FinanceClient {
 }
 
 impl FinanceClient {
-    async fn _refresh_session_async(&self) -> PyResult<()> {
+    async fn _refresh_session_async(&self) -> FinanceResult<()> {
         {
             let last_refresh = self.last_refresh.read().unwrap_or_else(|p| p.into_inner());
             if let Some(instant) = *last_refresh {
@@ -110,11 +110,8 @@ impl FinanceClient {
             .client
             .get(crate::common::NSE_ALL_REPORTS_URL)
             .send()
-            .await
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-        response
-            .error_for_status()
-            .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+            .await?;
+        response.error_for_status()?;
         *last_refresh = Some(std::time::Instant::now());
         Ok(())
     }
@@ -124,47 +121,40 @@ impl FinanceClient {
 impl FinanceClient {
     #[new]
     fn new() -> PyResult<Self> {
-        let client = common::build_client(None)?;
+        let client = crate::common::build_client(None)?;
         Ok(FinanceClient {
             client,
             last_refresh: RwLock::new(None),
         })
     }
     fn _initialize_session(&self, py: Python<'_>) -> PyResult<()> {
-        py.allow_threads(|| runtime().block_on(async { self._refresh_session_async().await }))
+        Ok(py.allow_threads(|| crate::runtime().block_on(async { self._refresh_session_async().await }))?)
     }
 
     /// Returns the current market status for all segments.
     fn get_market_status(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::market_status)?;
-        common::parse_json_to_py_typed::<models::MarketStatusResponse>(py, &json_bytes)
+        let value = common::parse_json_value(&json_bytes)?;
+        Ok(to_py_obj(py, value)?)
     }
 
-    /// Returns the market holiday calendar for the current year.
+    /// Returns the current list of NSE stock market holidays.
     fn get_holidays(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::holidays)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value = common::parse_json_value(&json_bytes)?;
+        Ok(to_py_obj(py, value)?)
     }
 
-    /// Returns FII and DII trading activity for the most recent day.
     fn get_fii_dii_activity(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::fii_dii_activity)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
-    /// Returns the summarized market turnover across segments.
     fn get_market_turnover(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::market_turnover)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns historical price and volume data for a given security.
@@ -208,13 +198,13 @@ impl FinanceClient {
     /// Returns the Equity Bhavcopy (all records) for a given date.
     fn bhav_copy_equities(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, equities::bhav_copy_equities, &date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns a list of all active equities listed on NSE.
     fn get_equity_list(&self, py: Python<'_>) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, equities::equity_list)?;
-        common::parse_csv_to_py_typed::<models::EquityInfo>(py, &csv_str)
+        Ok(common::parse_csv_to_py_typed::<models::EquityInfo>(py, &csv_str)?)
     }
 
     /// Returns bulk deal data for a specific date range.
@@ -225,7 +215,7 @@ impl FinanceClient {
         to_date: String,
     ) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, equities::bulk_deal_data, &from_date, &to_date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns block deals data for a specific date range.
@@ -236,7 +226,7 @@ impl FinanceClient {
         to_date: String,
     ) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, equities::block_deals_data, &from_date, &to_date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns short selling data for a specific date range.
@@ -247,78 +237,70 @@ impl FinanceClient {
         to_date: String,
     ) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, equities::short_selling_data, &from_date, &to_date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns 52-week high or low stock records.
     fn get_52week_high_low(&self, py: Python<'_>, mode: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::fifty_two_week_high_low, &mode)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the top gainers for the current market state.
     fn get_top_gainers(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::top_gainers)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the top losers for the current market state.
     fn get_top_losers(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::top_losers)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the most active securities for a given index.
     fn get_most_active(&self, py: Python<'_>, mode: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::most_active, &mode)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the advances and declines count for all indices.
     fn get_advances_declines(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::advances_declines)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns monthly settlement statistics for a given financial year.
     fn get_monthly_settlement_stats(&self, py: Python<'_>, fin_year: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::monthly_settlement_stats, &fin_year)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns a detailed quote for a given equity symbol.
     fn get_equity_quote(&self, py: Python<'_>, symbol: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::equity_quote, &symbol)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns a list of all NSE market indices and their current values.
     fn get_all_indices(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, indices::all_indices)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns constituent stocks for a specific index (e.g., 'NIFTY 50').
     fn get_index_constituents(&self, py: Python<'_>, index: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, indices::index_constituents, &index)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns historical OHLCV data for a specific index.
@@ -338,7 +320,7 @@ impl FinanceClient {
             &to_date
         )?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns P/E, P/B and Dividend Yield for a specific index.
@@ -351,7 +333,7 @@ impl FinanceClient {
     ) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, indices::index_yield, &index, &from_date, &to_date)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns historical India VIX values.
@@ -362,10 +344,8 @@ impl FinanceClient {
         to_date: String,
     ) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, indices::india_vix_history, &from_date, &to_date)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns Total Returns Index (TRI) historical data.
@@ -384,10 +364,8 @@ impl FinanceClient {
             &from_date,
             &to_date
         )?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the option chain for a given symbol (Index or Equity).
@@ -398,10 +376,8 @@ impl FinanceClient {
         is_index: bool,
     ) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, derivatives::option_chain, &symbol, is_index)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the Derivatives (F&O) Bhavcopy for a given date and segment.
@@ -418,29 +394,27 @@ impl FinanceClient {
             &date,
             &segment
         )?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns the list of securities currently in the F&O Ban period.
     fn get_fo_sec_ban(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, derivatives::fo_sec_ban)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the SPAN margins for a given date.
     fn get_span_margins(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, derivatives::span_margins, &date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns upcoming corporate actions like dividends, splits, etc.
     fn get_corporate_actions(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, corporate::corporate_actions)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns financial results metadata for a specific security.
@@ -462,20 +436,20 @@ impl FinanceClient {
             &period
         )?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Parses financial statement data from an XBRL URL provided by NSE.
     fn get_financial_details(&self, py: Python<'_>, xbrl_url: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, corporate::parse_xbrl_data, &xbrl_url)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the SLB (Securities Lending & Borrowing) Bhavcopy for a given date.
     fn get_slb_bhavcopy(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, slb::slb_bhavcopy, &date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     // --- Granular Equity Reports ---
@@ -491,13 +465,13 @@ impl FinanceClient {
     /// Returns FO security ban list as CSV for a given date.
     fn get_fo_ban_list(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, derivatives::fo_sec_ban_csv, &date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns participant wise trading volumes for a given date.
     fn get_participant_volume(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, derivatives::participant_volume, &date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns client wise OI limits (LST) for a given date.
@@ -510,49 +484,43 @@ impl FinanceClient {
     /// Returns Additional Surveillance Measure (ASM) stocks.
     fn get_asm_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::asm_stocks)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns Graded Surveillance Measure (GSM) stocks.
     fn get_gsm_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::gsm_stocks)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns list of short ban stocks. Currently uses a placeholder if no specific API.
     fn get_short_ban_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, derivatives::fo_sec_ban)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns SLB eligible securities suggestions.
     fn get_slb_eligible(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, slb::slb_eligible)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns SLB live analysis/open positions for a specific series.
     fn get_slb_open_positions(&self, py: Python<'_>, series: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, slb::live_analysis_slb, &series)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns SLB series master (available months).
     fn get_slb_series_master(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, slb::slb_series_master)?;
         let value = common::parse_json_value(&json_bytes)?;
-        to_py_obj(py, value)
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns insider trades (PIT) data for a given date range.
@@ -563,10 +531,8 @@ impl FinanceClient {
         to_date: String,
     ) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, corporate::insider_trades, &from_date, &to_date)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
     fn bhav_copy_equities_raw(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let bytes = fetch_py!(self, py, equities::bhav_copy_equities, &date)?;
@@ -698,31 +664,27 @@ impl FinanceClient {
     /// Returns the live Currency Market Status
     fn get_live_currency_market(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, currency::live_currency_market)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns Currency Bhavcopy
     fn get_currency_bhavcopy(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, currency::currency_bhavcopy, &date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns the live Commodities Market Status
     fn get_live_commodities_market(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, commodities::nse_live_commodities_market)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("JSON parse error: {}", e))
-        })?;
-        to_py_obj(py, value)
+        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        Ok(to_py_obj(py, value)?)
     }
 
     /// Returns NSE Commodities Bhavcopy
     fn get_nse_commodities_bhavcopy(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, commodities::nse_commodities_bhavcopy, &date)?;
-        common::parse_csv_to_py(py, &csv_str)
+        Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns MCX Bhavcopy (ZIP/CSV bytes)

@@ -1,16 +1,17 @@
 use crate::common::{fetch_bytes, parse_date_robust};
+use crate::error::FinanceResult;
+use bytes::Bytes;
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
-use pyo3::prelude::*;
 use reqwest::Client;
 
 /// Fetches a list of all NSE market indices.
-pub async fn all_indices(client: &Client) -> PyResult<bytes::Bytes> {
+pub async fn all_indices(client: &Client) -> FinanceResult<Bytes> {
     let url = "https://www.nseindia.com/api/allIndices";
     fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetches constituent stocks for a given index.
-pub async fn index_constituents(client: &Client, index: &str) -> PyResult<bytes::Bytes> {
+pub async fn index_constituents(client: &Client, index: &str) -> FinanceResult<Bytes> {
     let encoded_index = percent_encode(index.as_bytes(), NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/equity-stockIndices?index={}",
@@ -25,7 +26,7 @@ pub async fn index_history(
     index: &str,
     from_date: &str,
     to_date: &str,
-) -> PyResult<bytes::Bytes> {
+) -> FinanceResult<Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_index = percent_encode(index.as_bytes(), NON_ALPHANUMERIC).to_string();
@@ -49,7 +50,7 @@ pub async fn index_yield(
     index: &str,
     from_date: &str,
     to_date: &str,
-) -> PyResult<bytes::Bytes> {
+) -> FinanceResult<Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_index = percent_encode(index.as_bytes(), NON_ALPHANUMERIC).to_string();
@@ -72,7 +73,7 @@ pub async fn india_vix_history(
     client: &Client,
     from_date: &str,
     to_date: &str,
-) -> PyResult<bytes::Bytes> {
+) -> FinanceResult<Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let url = format!(
@@ -94,7 +95,7 @@ pub async fn total_returns_index(
     index: &str,
     from_date: &str,
     to_date: &str,
-) -> PyResult<bytes::Bytes> {
+) -> FinanceResult<Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_index = percent_encode(index.as_bytes(), NON_ALPHANUMERIC).to_string();

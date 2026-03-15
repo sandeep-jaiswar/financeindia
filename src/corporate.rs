@@ -1,7 +1,7 @@
 use crate::common::{fetch_bytes, parse_date_robust};
+use crate::error::{FinanceError, FinanceResult};
+use bytes::Bytes;
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
-use pyo3::prelude::*;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use reqwest::Client;
@@ -14,7 +14,7 @@ pub async fn financial_results(
     from_date: &str,
     to_date: &str,
     period: &str,
-) -> PyResult<bytes::Bytes> {
+) -> FinanceResult<Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
@@ -35,31 +35,31 @@ pub async fn financial_results(
 }
 
 /// Fetches upcoming corporate actions.
-pub async fn corporate_actions(client: &Client) -> PyResult<bytes::Bytes> {
+pub async fn corporate_actions(client: &Client) -> FinanceResult<Bytes> {
     let url = "https://www.nseindia.com/api/corporates-corporateActions?index=equities";
     fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Downloads and parses an XBRL file into JSON.
-pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes::Bytes> {
+pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> FinanceResult<Bytes> {
     // SSRF Validation
     let url = reqwest::Url::parse(xbrl_url)
-        .map_err(|e| PyErr::new::<PyValueError, _>(format!("Invalid URL: {}", e)))?;
+        .map_err(|e| FinanceError::Runtime(format!("Invalid URL: {}", e)))?;
 
     if url.scheme() != "https" {
-        return Err(PyErr::new::<PyValueError, _>("Only HTTPS URLs are allowed"));
+        return Err(FinanceError::Runtime("Only HTTPS URLs are allowed".to_string()));
     }
 
     let host = url.host_str().unwrap_or_default();
     if !host.ends_with(".nseindia.com") && host != "nseindia.com" {
-        return Err(PyErr::new::<PyValueError, _>(
-            "URL host must be a trusted NSE domain",
+        return Err(FinanceError::Runtime(
+            "URL host must be a trusted NSE domain".to_string(),
         ));
     }
 
     let xml_bytes = fetch_bytes(client, xbrl_url, Some("https://www.nseindia.com/")).await?;
     let xml_str = String::from_utf8(xml_bytes.to_vec())
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("UTF-8 Error: {}", e)))?;
+        .map_err(|e| FinanceError::Runtime(format!("UTF-8 Error: {}", e)))?;
     let mut reader = Reader::from_str(&xml_str);
     reader.config_mut().trim_text(true);
 
@@ -92,7 +92,7 @@ pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes:
                             if !current_attrs.is_empty() {
                                 let attrs_value =
                                     serde_json::to_value(&current_attrs).map_err(|e| {
-                                        PyErr::new::<PyRuntimeError, _>(format!(
+                                        FinanceError::Runtime(format!(
                                             "Attr serialization error: {}",
                                             e
                                         ))
@@ -114,14 +114,14 @@ pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes:
                 current_attrs.clear();
             }
             Ok(Event::Eof) => break,
-            Err(e) => return Err(PyErr::new::<PyRuntimeError, _>(format!("XML Error: {}", e))),
+            Err(e) => return Err(FinanceError::Runtime(format!("XML Error: {}", e))),
             _ => (),
         }
         buf.clear();
     }
     serde_json::to_vec(&results)
-        .map(|v| bytes::Bytes::from(v))
-        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON Serialization Error: {}", e)))
+        .map(Bytes::from)
+        .map_err(|e| FinanceError::Runtime(format!("JSON Serialization Error: {}", e)))
 }
 
 /// Fetches insider trades (PIT) data for a given date range.
@@ -129,7 +129,7 @@ pub async fn insider_trades(
     client: &Client,
     from_date: &str,
     to_date: &str,
-) -> PyResult<bytes::Bytes> {
+) -> FinanceResult<Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let url = format!(

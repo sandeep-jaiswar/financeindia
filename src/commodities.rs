@@ -1,9 +1,10 @@
 use crate::common::{fetch_bytes, parse_date_robust};
-use pyo3::prelude::*;
+use crate::error::FinanceResult;
+use bytes::Bytes;
 use reqwest::Client;
 
 /// Fetch Commodities Derivatives Bhavcopy for a given date.
-pub async fn nse_commodities_bhavcopy(client: &Client, date: &str) -> PyResult<bytes::Bytes> {
+pub async fn nse_commodities_bhavcopy(client: &Client, date: &str) -> FinanceResult<Bytes> {
     let d = parse_date_robust(date)?;
     let url = format!(
         "https://nsearchives.nseindia.com/content/nsccl/bhavcopy_cbo_{}.csv",
@@ -13,13 +14,13 @@ pub async fn nse_commodities_bhavcopy(client: &Client, date: &str) -> PyResult<b
 }
 
 /// Fetch live market data for Commodities.
-pub async fn nse_live_commodities_market(client: &Client) -> PyResult<bytes::Bytes> {
+pub async fn nse_live_commodities_market(client: &Client) -> FinanceResult<Bytes> {
     let url = "https://www.nseindia.com/api/liveCommodity-Market";
     fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetch MCX Bhavcopy.
-pub async fn mcx_bhavcopy(client: &Client, date: &str) -> PyResult<bytes::Bytes> {
+pub async fn mcx_bhavcopy(client: &Client, date: &str) -> FinanceResult<Bytes> {
     let d = parse_date_robust(date)?;
     let url = format!(
         "https://www.mcxindia.com/en/bhavcopy/bhavcopy.aspx?date={}",

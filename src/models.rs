@@ -88,24 +88,42 @@ pub struct PriceVolumeRow {
     pub series: Option<String>,
     #[serde(rename = "DATE1")]
     pub date: Option<String>,
-    #[serde(rename = "PREV_CLOSE")]
-    pub prev_close: Option<String>,
-    #[serde(rename = "OPEN_PRICE")]
-    pub open_price: Option<String>,
-    #[serde(rename = "HIGH_PRICE")]
-    pub high_price: Option<String>,
-    #[serde(rename = "LOW_PRICE")]
-    pub low_price: Option<String>,
-    #[serde(rename = "LAST_PRICE")]
-    pub last_price: Option<String>,
-    #[serde(rename = "CLOSE_PRICE")]
-    pub close_price: Option<String>,
-    #[serde(rename = "AVG_PRICE")]
-    pub average_price: Option<String>,
-    #[serde(rename = "TTL_TRD_QNTY")]
-    pub total_traded_quantity: Option<String>,
-    #[serde(rename = "TURNOVER_LACS")]
-    pub turnover: Option<String>,
-    #[serde(rename = "NO_OF_TRADES")]
-    pub no_of_trades: Option<String>,
+    #[serde(rename = "PREV_CLOSE", deserialize_with = "deserialize_optional_f64")]
+    pub prev_close: Option<f64>,
+    #[serde(rename = "OPEN_PRICE", deserialize_with = "deserialize_optional_f64")]
+    pub open_price: Option<f64>,
+    #[serde(rename = "HIGH_PRICE", deserialize_with = "deserialize_optional_f64")]
+    pub high_price: Option<f64>,
+    #[serde(rename = "LOW_PRICE", deserialize_with = "deserialize_optional_f64")]
+    pub low_price: Option<f64>,
+    #[serde(rename = "LAST_PRICE", deserialize_with = "deserialize_optional_f64")]
+    pub last_price: Option<f64>,
+    #[serde(rename = "CLOSE_PRICE", deserialize_with = "deserialize_optional_f64")]
+    pub close_price: Option<f64>,
+    #[serde(rename = "AVG_PRICE", deserialize_with = "deserialize_optional_f64")]
+    pub average_price: Option<f64>,
+    #[serde(rename = "TTL_TRD_QNTY", deserialize_with = "deserialize_optional_f64")]
+    pub total_traded_quantity: Option<f64>,
+    #[serde(rename = "TURNOVER_LACS", deserialize_with = "deserialize_optional_f64")]
+    pub turnover: Option<f64>,
+    #[serde(rename = "NO_OF_TRADES", deserialize_with = "deserialize_optional_f64")]
+    pub no_of_trades: Option<f64>,
+}
+
+fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    match s {
+        Some(s) => {
+            let clean = s.replace(",", "").trim().to_string();
+            if clean.is_empty() || clean == "-" {
+                Ok(None)
+            } else {
+                clean.parse::<f64>().map(Some).map_err(serde::de::Error::custom)
+            }
+        }
+        None => Ok(None),
+    }
 }

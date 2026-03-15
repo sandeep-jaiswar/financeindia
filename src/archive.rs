@@ -1,8 +1,8 @@
-use pyo3::exceptions::PyRuntimeError;
+use crate::error::FinanceError;
 use pyo3::prelude::*;
 use reqwest::Client;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
 use zip::write::FileOptions;
 
@@ -16,7 +16,7 @@ pub struct BhavArchive {
 impl BhavArchive {
     #[new]
     pub fn new() -> PyResult<Self> {
-        let client = crate::common::build_client(None)?;
+        let client = crate::common::build_client(None).map_err(PyErr::from)?;
         Ok(BhavArchive { client })
     }
 
@@ -35,8 +35,7 @@ impl BhavArchive {
         py.allow_threads(|| {
             crate::runtime().block_on(async move {
                 let path = Path::new(&output_path);
-                let file =
-                    File::create(path).map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+                let file = File::create(path).map_err(|e| FinanceError::Io(e))?;
                 let mut zip = zip::ZipWriter::new(file);
                 let options: FileOptions<'_, ()> = FileOptions::default()
                     .compression_method(zip::CompressionMethod::Stored)
@@ -52,7 +51,8 @@ impl BhavArchive {
                     let date_clone = date.clone();
                     set.spawn(async move {
                         let _permit = sem_clone.acquire().await.unwrap();
-                        let res = crate::equities::bhav_copy_equities(&client_clone, &date_clone).await;
+                        let res =
+                            crate::equities::bhav_copy_equities(&client_clone, &date_clone).await;
                         (date_clone, res)
                     });
                 }
@@ -61,14 +61,12 @@ impl BhavArchive {
                 let mut failed_dates = Vec::new();
 
                 while let Some(res) = set.join_next().await {
-                    let (date, result) =
-                        res.map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+                    let (date, result) = res.map_err(|e| FinanceError::Runtime(e.to_string()))?;
                     match result {
                         Ok(data) => {
                             zip.start_file(format!("bhav_{}.csv", date), options)
-                                .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-                            zip.write_all(&data)
-                                .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
+                                .map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                            zip.write_all(&data).map_err(|e| FinanceError::Io(e))?;
                             success_count += 1;
                         }
                         Err(e) => {
@@ -78,10 +76,10 @@ impl BhavArchive {
                     }
                 }
 
-                zip.finish()
-                    .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))?;
-                Ok((success_count, failed_dates))
+                zip.finish().map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                Ok::<_, FinanceError>((success_count, failed_dates))
             })
+            .map_err(PyErr::from)
         })
     }
 }
