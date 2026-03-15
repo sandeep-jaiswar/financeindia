@@ -1,8 +1,36 @@
 use crate::common::{fetch_bytes, parse_date_robust, read_first_text_file_from_zip};
 use crate::error::{FinanceError, FinanceResult};
 use bytes::Bytes;
-use percent_encoding::{NON_ALPHANUMERIC, percent_encode, utf8_percent_encode};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::Client;
+
+// --- Private helpers -----------------------------------------------------------
+
+/// Shared implementation for bulk/block/short-selling deal endpoints.
+/// The `option_type` parameter maps to the NSE API's `optionType` query parameter.
+async fn fetch_deal_data(
+    client: &Client,
+    option_type: &str,
+    from_date: &str,
+    to_date: &str,
+) -> FinanceResult<Bytes> {
+    let from = parse_date_robust(from_date)?;
+    let to = parse_date_robust(to_date)?;
+    let url = format!(
+        "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType={}&from={}&to={}&csv=true",
+        option_type,
+        from.format(crate::common::NSE_DATE_FMT),
+        to.format(crate::common::NSE_DATE_FMT)
+    );
+    fetch_bytes(
+        client,
+        &url,
+        Some("https://www.nseindia.com/report-detail/display-bulk-and-block-deals"),
+    )
+    .await
+}
+
+// --- Public API functions ------------------------------------------------------
 
 /// Fetches the Equity Bhavcopy (UDiFF format) for a given date.
 pub async fn bhav_copy_equities(client: &Client, date: &str) -> FinanceResult<Bytes> {
@@ -11,7 +39,6 @@ pub async fn bhav_copy_equities(client: &Client, date: &str) -> FinanceResult<By
         "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{}_F_0000.csv.zip",
         d.format("%Y%m%d")
     );
-
     let bytes = fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL)).await?;
     read_first_text_file_from_zip(bytes)
 }
@@ -25,7 +52,7 @@ pub async fn price_volume_data(
 ) -> FinanceResult<Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
-    let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
+    let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/historicalOR/generateSecurityWiseHistoricalData?from={}&to={}&symbol={}&type=priceVolume&series=ALL&csv=true",
         from.format(crate::common::NSE_DATE_FMT),
@@ -46,19 +73,7 @@ pub async fn bulk_deal_data(
     from_date: &str,
     to_date: &str,
 ) -> FinanceResult<Bytes> {
-    let from = parse_date_robust(from_date)?;
-    let to = parse_date_robust(to_date)?;
-    let url = format!(
-        "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=bulk_deals&from={}&to={}&csv=true",
-        from.format(crate::common::NSE_DATE_FMT),
-        to.format(crate::common::NSE_DATE_FMT)
-    );
-    fetch_bytes(
-        client,
-        &url,
-        Some("https://www.nseindia.com/report-detail/display-bulk-and-block-deals"),
-    )
-    .await
+    fetch_deal_data(client, "bulk_deals", from_date, to_date).await
 }
 
 /// Fetches block deals data for a date range.
@@ -67,19 +82,7 @@ pub async fn block_deals_data(
     from_date: &str,
     to_date: &str,
 ) -> FinanceResult<Bytes> {
-    let from = parse_date_robust(from_date)?;
-    let to = parse_date_robust(to_date)?;
-    let url = format!(
-        "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=block_deals&from={}&to={}&csv=true",
-        from.format(crate::common::NSE_DATE_FMT),
-        to.format(crate::common::NSE_DATE_FMT)
-    );
-    fetch_bytes(
-        client,
-        &url,
-        Some("https://www.nseindia.com/report-detail/display-bulk-and-block-deals"),
-    )
-    .await
+    fetch_deal_data(client, "block_deals", from_date, to_date).await
 }
 
 /// Fetches short selling data for a date range.
@@ -88,30 +91,22 @@ pub async fn short_selling_data(
     from_date: &str,
     to_date: &str,
 ) -> FinanceResult<Bytes> {
-    let from = parse_date_robust(from_date)?;
-    let to = parse_date_robust(to_date)?;
-    let url = format!(
-        "https://www.nseindia.com/api/historicalOR/bulk-block-short-deals?optionType=short_selling&from={}&to={}&csv=true",
-        from.format(crate::common::NSE_DATE_FMT),
-        to.format(crate::common::NSE_DATE_FMT)
-    );
-    fetch_bytes(
-        client,
-        &url,
-        Some("https://www.nseindia.com/report-detail/display-bulk-and-block-deals"),
-    )
-    .await
+    fetch_deal_data(client, "short_selling", from_date, to_date).await
 }
 
 /// Fetches advances and declines data.
 pub async fn advances_declines(client: &Client) -> FinanceResult<Bytes> {
     let url = "https://www.nseindia.com/api/equity-stockIndices?index=ALL%20INDICES";
-    fetch_bytes(client, url, Some("https://www.nseindia.com/market-data/live-equity-market")).await
+    fetch_bytes(
+        client,
+        url,
+        Some("https://www.nseindia.com/market-data/live-equity-market"),
+    )
+    .await
 }
 
-/// Fetches monthly settlement statistics.
+/// Fetches monthly settlement statistics for a financial year (`"YYYY-YYYY"`).
 pub async fn monthly_settlement_stats(client: &Client, fin_year: &str) -> FinanceResult<Bytes> {
-    // fin_year format: YYYY-YYYY
     let parts: Vec<&str> = fin_year.split('-').collect();
     if parts.len() != 2 || parts[0].len() != 4 || parts[1].len() != 4 {
         return Err(FinanceError::Runtime(
@@ -139,17 +134,24 @@ pub async fn monthly_settlement_stats(client: &Client, fin_year: &str) -> Financ
     fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
-/// Fetches 52 week high/low data.
+/// Fetches 52-week high or low data.
+///
+/// `mode` must be exactly `"high"` or `"low"`.
 pub async fn fifty_two_week_high_low(client: &Client, mode: &str) -> FinanceResult<Bytes> {
-    let url = if mode == "low" {
-        "https://www.nseindia.com/api/live-analysis-data-52weeklowstock"
-    } else {
-        "https://www.nseindia.com/api/live-analysis-data-52weekhighstock"
+    let url = match mode {
+        "low" => "https://www.nseindia.com/api/live-analysis-data-52weeklowstock",
+        "high" => "https://www.nseindia.com/api/live-analysis-data-52weekhighstock",
+        other => {
+            return Err(FinanceError::Runtime(format!(
+                "Invalid mode '{}'. Use \"high\" or \"low\".",
+                other
+            )));
+        }
     };
     fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
-/// Fetches most active securities.
+/// Fetches most active securities for a given index name.
 pub async fn most_active(client: &Client, mode: &str) -> FinanceResult<Bytes> {
     let encoded_mode = utf8_percent_encode(mode, NON_ALPHANUMERIC).to_string();
     let url = format!(
@@ -166,8 +168,9 @@ pub async fn top_gainers(client: &Client) -> FinanceResult<Bytes> {
 }
 
 /// Fetches top losers.
+///
+/// Note: NSE's API endpoint uses "loosers" (their intentional spelling). Do not correct it.
 pub async fn top_losers(client: &Client) -> FinanceResult<Bytes> {
-    // NOTE: NSE's API endpoint intentionally uses "loosers" (their typo). Do not "correct" this.
     let url = "https://www.nseindia.com/api/live-analysis-variations?index=loosers";
     fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
@@ -181,7 +184,7 @@ pub async fn deliverable_position_data(
 ) -> FinanceResult<Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
-    let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
+    let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/historicalOR/generateSecurityWiseHistoricalData?from={}&to={}&symbol={}&type=deliverable&series=ALL&csv=true",
         from.format(crate::common::NSE_DATE_FMT),
@@ -204,7 +207,7 @@ pub async fn equity_list(client: &Client) -> FinanceResult<Bytes> {
 
 /// Fetches a detailed quote for an equity symbol.
 pub async fn equity_quote(client: &Client, symbol: &str) -> FinanceResult<Bytes> {
-    let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
+    let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/quote-equity?symbol={}",
         encoded_symbol
@@ -238,7 +241,7 @@ pub async fn fii_dii_activity(client: &Client) -> FinanceResult<Bytes> {
     fetch_bytes(client, url, Some("https://www.nseindia.com/reports/fii-dii")).await
 }
 
-/// Fetches detailed FII statistics (.xls).
+/// Fetches detailed FII statistics (Excel/XLS binary).
 pub async fn fii_stats(client: &Client, date: &str) -> FinanceResult<Bytes> {
     let d = parse_date_robust(date)?;
     let url = format!(

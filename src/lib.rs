@@ -9,7 +9,6 @@ use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use reqwest::Client;
 use std::sync::{RwLock, OnceLock};
-use std::time::Duration;
 
 mod archive;
 mod async_client;
@@ -25,7 +24,7 @@ mod models;
 mod slb;
 mod streaming;
 
-use crate::error::*;
+use crate::error::FinanceResult;
 
 static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
@@ -90,16 +89,24 @@ struct FinanceClient {
 
 impl FinanceClient {
     async fn _refresh_session_async(&self) -> FinanceResult<()> {
+        // Fast path: check under read lock to avoid exclusive acquisition on every call.
         {
-            let last_refresh = self.last_refresh.read().unwrap_or_else(|p| p.into_inner());
+            let last_refresh = self.last_refresh.read().unwrap_or_else(|p| {
+                log::error!("Session read-lock was poisoned; recovering.");
+                p.into_inner()
+            });
             if let Some(instant) = *last_refresh {
-                if instant.elapsed() < Duration::from_secs(900) {
+                if instant.elapsed() < crate::common::SESSION_REFRESH_INTERVAL {
                     return Ok(());
                 }
             }
         }
 
-        let mut last_refresh = self.last_refresh.write().unwrap_or_else(|p| p.into_inner());
+        // Slow path: acquire write lock and double-check (another task may have refreshed).
+        let mut last_refresh = self.last_refresh.write().unwrap_or_else(|p| {
+            log::error!("Session write-lock was poisoned; recovering.");
+            p.into_inner()
+        });
         if let Some(instant) = *last_refresh {
             if instant.elapsed() < crate::common::SESSION_REFRESH_INTERVAL {
                 return Ok(());
@@ -134,26 +141,25 @@ impl FinanceClient {
     /// Returns the current market status for all segments.
     fn get_market_status(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::market_status)?;
-        let value = common::parse_json_value(&json_bytes)?;
-        Ok(to_py_obj(py, value)?)
+        Ok(common::parse_json_to_py_typed::<models::MarketStatusResponse>(py, &json_bytes)?)
     }
 
     /// Returns the current list of NSE stock market holidays.
     fn get_holidays(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::holidays)?;
-        let value = common::parse_json_value(&json_bytes)?;
-        Ok(to_py_obj(py, value)?)
+        Ok(common::parse_json_to_py_typed::<Vec<models::Holiday>>(py, &json_bytes)?)
     }
 
+    /// Returns FII and DII trading activity for the current day.
     fn get_fii_dii_activity(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::fii_dii_activity)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
-        Ok(to_py_obj(py, value)?)
+        Ok(common::parse_json_to_py_typed::<Vec<models::FiiDiiActivity>>(py, &json_bytes)?)
     }
 
+    /// Returns the current total market turnover across all segments.
     fn get_market_turnover(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::market_turnover)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
@@ -262,30 +268,34 @@ impl FinanceClient {
     }
 
     /// Returns the most active securities for a given index.
+    /// Returns the most active securities for a given index.
     fn get_most_active(&self, py: Python<'_>, mode: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::most_active, &mode)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
     /// Returns the advances and declines count for all indices.
+    /// Returns advances and declines counts for all indices.
     fn get_advances_declines(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::advances_declines)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
     /// Returns monthly settlement statistics for a given financial year.
+    /// Returns monthly settlement statistics for a given financial year (format `"YYYY-YYYY"`).
     fn get_monthly_settlement_stats(&self, py: Python<'_>, fin_year: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::monthly_settlement_stats, &fin_year)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
     /// Returns a detailed quote for a given equity symbol.
+    /// Returns a full JSON quote for a given equity symbol.
     fn get_equity_quote(&self, py: Python<'_>, symbol: String) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::equity_quote, &symbol)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
@@ -344,7 +354,7 @@ impl FinanceClient {
         to_date: String,
     ) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, indices::india_vix_history, &from_date, &to_date)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
@@ -364,7 +374,7 @@ impl FinanceClient {
             &from_date,
             &to_date
         )?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
@@ -376,7 +386,7 @@ impl FinanceClient {
         is_index: bool,
     ) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, derivatives::option_chain, &symbol, is_index)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
@@ -400,7 +410,7 @@ impl FinanceClient {
     /// Returns the list of securities currently in the F&O Ban period.
     fn get_fo_sec_ban(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, derivatives::fo_sec_ban)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
@@ -452,17 +462,13 @@ impl FinanceClient {
         Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
 
-    // --- Granular Equity Reports ---
-
-    // --- Granular Macro Reports ---
-    /// Returns detailed FII stats.
+    /// Returns detailed FII statistics as raw XLS bytes for a given date.
     fn get_fii_stats(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let bytes = fetch_py!(self, py, equities::fii_stats, &date)?;
         Ok(pyo3::types::PyBytes::new(py, &bytes).into_any().unbind())
     }
 
-    // --- Granular Derivative Reports ---
-    /// Returns FO security ban list as CSV for a given date.
+    /// Returns the F&O security ban list as CSV for a given date.
     fn get_fo_ban_list(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, derivatives::fo_sec_ban_csv, &date)?;
         Ok(common::parse_csv_to_py(py, &csv_str)?)
@@ -480,25 +486,23 @@ impl FinanceClient {
         Ok(lst_content.into_py_any(py)?)
     }
 
-    // --- Surveillance & SLB Expansion ---
     /// Returns Additional Surveillance Measure (ASM) stocks.
     fn get_asm_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::asm_stocks)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
-        Ok(to_py_obj(py, value)?)
+        Ok(common::parse_json_to_py_typed::<Vec<models::ASMStock>>(py, &json_bytes)?)
     }
 
     /// Returns Graded Surveillance Measure (GSM) stocks.
     fn get_gsm_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::gsm_stocks)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
-        Ok(to_py_obj(py, value)?)
+        Ok(common::parse_json_to_py_typed::<Vec<models::GSMStock>>(py, &json_bytes)?)
     }
 
-    /// Returns list of short ban stocks. Currently uses a placeholder if no specific API.
+    /// Returns the list of securities currently in the F&O ban period.
+    /// Note: uses the same live API as `get_fo_sec_ban`.
     fn get_short_ban_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, derivatives::fo_sec_ban)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
@@ -531,7 +535,7 @@ impl FinanceClient {
         to_date: String,
     ) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, corporate::insider_trades, &from_date, &to_date)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
     fn bhav_copy_equities_raw(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
@@ -662,9 +666,10 @@ impl FinanceClient {
     }
 
     /// Returns the live Currency Market Status
+    /// Returns the live Currency Derivatives market status.
     fn get_live_currency_market(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, currency::live_currency_market)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 
@@ -675,9 +680,10 @@ impl FinanceClient {
     }
 
     /// Returns the live Commodities Market Status
+    /// Returns the live NSE Commodities market status.
     fn get_live_commodities_market(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, commodities::nse_live_commodities_market)?;
-        let value: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(FinanceError::from)?;
+        let value = common::parse_json_value(&json_bytes)?;
         Ok(to_py_obj(py, value)?)
     }
 

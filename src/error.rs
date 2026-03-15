@@ -1,5 +1,5 @@
+use pyo3::exceptions::{PyConnectionError, PyOSError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::exceptions::PyRuntimeError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -14,7 +14,11 @@ pub enum FinanceError {
     Io(#[from] std::io::Error),
     #[error("Zip error: {0}")]
     Zip(#[from] zip::result::ZipError),
-    #[error("Python error: {0}")]
+    #[error("XML error: {0}")]
+    Xml(#[from] quick_xml::Error),
+    #[error("URL parse error: {0}")]
+    UrlParse(#[from] url::ParseError),
+    #[error("Python callback error: {0}")]
     Py(String),
     #[error("Runtime error: {0}")]
     Runtime(String),
@@ -23,8 +27,15 @@ pub enum FinanceError {
 impl From<FinanceError> for PyErr {
     fn from(err: FinanceError) -> PyErr {
         match err {
+            FinanceError::Http(e) => PyConnectionError::new_err(e.to_string()),
+            FinanceError::Json(e) => PyValueError::new_err(e.to_string()),
+            FinanceError::Csv(e) => PyValueError::new_err(e.to_string()),
+            FinanceError::Io(e) => PyOSError::new_err(e.to_string()),
+            FinanceError::Zip(e) => PyRuntimeError::new_err(e.to_string()),
+            FinanceError::Xml(e) => PyValueError::new_err(e.to_string()),
+            FinanceError::UrlParse(e) => PyValueError::new_err(e.to_string()),
             FinanceError::Py(s) => PyRuntimeError::new_err(s),
-            _ => PyRuntimeError::new_err(err.to_string()),
+            FinanceError::Runtime(s) => PyRuntimeError::new_err(s),
         }
     }
 }

@@ -1,9 +1,10 @@
 use crate::common::{fetch_bytes, parse_date_robust};
 use crate::error::FinanceResult;
 use bytes::Bytes;
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::Client;
 
-/// Fetches SLB Bhavcopy (DAT).
+/// Fetches SLB Bhavcopy (DAT file) for a given date.
 pub async fn slb_bhavcopy(client: &Client, date: &str) -> FinanceResult<Bytes> {
     let d = parse_date_robust(date)?;
     let url = format!(
@@ -29,11 +30,9 @@ pub async fn slb_eligible(client: &Client) -> FinanceResult<Bytes> {
     .await
 }
 
-/// Fetches SLB live analysis/open positions for a specific series.
+/// Fetches SLB live analysis / open positions for a specific series.
 pub async fn live_analysis_slb(client: &Client, series: &str) -> FinanceResult<Bytes> {
-    let encoded_series =
-        percent_encoding::utf8_percent_encode(series, percent_encoding::NON_ALPHANUMERIC)
-            .to_string();
+    let encoded_series = utf8_percent_encode(series, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/live-analysis-slb?series={}",
         encoded_series

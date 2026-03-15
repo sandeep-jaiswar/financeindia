@@ -1,4 +1,4 @@
-use crate::error::{FinanceError, FinanceResult};
+use crate::error::FinanceResult;
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio::future_into_py;
@@ -54,11 +54,10 @@ macro_rules! dispatch_async {
         let refresh_lock = $self.last_refresh.clone();
         future_into_py($py, async move {
             let $client = &$client;
-            let res: PyResult<_> = async move {
-                Self::_refresh_session_async($client, &refresh_lock).await.map_err(PyErr::from)?;
-                $body
-            }.await;
-            res
+            Self::_refresh_session_async($client, &refresh_lock)
+                .await
+                .map_err(PyErr::from)?;
+            $body
         })
     }};
 }
@@ -75,7 +74,7 @@ impl AsyncFinanceClient {
     }
 
     fn _initialize_session<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        dispatch_async!(self, py, client, Python::with_gil(|py| Ok(().into_py_any(py).map_err(|e| FinanceError::Py(e.to_string()))?)))
+        dispatch_async!(self, py, client, Python::with_gil(|py| Ok(().into_py_any(py)?)))
     }
 
     fn get_market_status<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -94,8 +93,7 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::holidays(&client).await?;
             Python::with_gil(|py| {
-                let value = crate::common::parse_json_value(&bytes)?;
-                crate::to_py_obj(py, value)
+                crate::common::parse_json_to_py_typed::<Vec<crate::models::Holiday>>(py, &bytes)
             })
         })
     }
@@ -104,11 +102,7 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::fii_dii_activity(&client).await?;
             Python::with_gil(|py| {
-                let bytes_py = pyo3::types::PyBytes::new(py, &bytes);
-                crate::common::parse_json_to_py_typed::<Vec<crate::models::FiiDiiActivity>>(
-                    py,
-                    bytes_py.as_bytes(),
-                )
+                crate::common::parse_json_to_py_typed::<Vec<crate::models::FiiDiiActivity>>(py, &bytes)
             })
         })
     }
@@ -705,8 +699,7 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::asm_stocks(&client).await?;
             Python::with_gil(|py| {
-                let bytes_py = pyo3::types::PyBytes::new(py, &bytes);
-                crate::common::parse_json_to_py_typed::<crate::models::ASMStock>(py, bytes_py.as_bytes())
+                crate::common::parse_json_to_py_typed::<Vec<crate::models::ASMStock>>(py, &bytes)
             })
         })
     }
@@ -715,17 +708,16 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::gsm_stocks(&client).await?;
             Python::with_gil(|py| {
-                let bytes_py = pyo3::types::PyBytes::new(py, &bytes);
-                crate::common::parse_json_to_py_typed::<Vec<crate::models::GSMStock>>(py, bytes_py.as_bytes())
+                crate::common::parse_json_to_py_typed::<Vec<crate::models::GSMStock>>(py, &bytes)
             })
         })
     }
 
     fn get_short_ban_stocks<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         dispatch_async!(self, py, client, {
-            let json_bytes = crate::derivatives::fo_sec_ban(&client).await?;
+            let bytes = crate::derivatives::fo_sec_ban(&client).await?;
             Python::with_gil(|py| {
-                let value = crate::common::parse_json_value(&json_bytes)?;
+                let value = crate::common::parse_json_value(&bytes)?;
                 crate::to_py_obj(py, value)
             })
         })

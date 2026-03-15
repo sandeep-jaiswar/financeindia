@@ -4,14 +4,14 @@ use serde::Deserialize;
 #[pyclass(get_all)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct FiiDiiActivity {
-    #[serde(rename = "buyValue")]
-    pub buy_value: Option<String>,
+    #[serde(rename = "buyValue", deserialize_with = "deserialize_optional_f64")]
+    pub buy_value: Option<f64>,
     pub category: Option<String>,
     pub date: Option<String>,
-    #[serde(rename = "netValue")]
-    pub net_value: Option<String>,
-    #[serde(rename = "sellValue")]
-    pub sell_value: Option<String>,
+    #[serde(rename = "netValue", deserialize_with = "deserialize_optional_f64")]
+    pub net_value: Option<f64>,
+    #[serde(rename = "sellValue", deserialize_with = "deserialize_optional_f64")]
+    pub sell_value: Option<f64>,
 }
 
 #[pyclass(get_all)]
@@ -34,8 +34,9 @@ pub struct MarketStatusResponse {
 #[pyclass(get_all)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct Holiday {
+    /// Serial number; `None` if the API omits it.
     #[serde(rename = "sr_no")]
-    pub sr_no: i32,
+    pub sr_no: Option<i32>,
     pub description: Option<String>,
     #[serde(rename = "tradingDate")]
     pub trading_date: Option<String>,
@@ -102,28 +103,43 @@ pub struct PriceVolumeRow {
     pub close_price: Option<f64>,
     #[serde(rename = "AVG_PRICE", deserialize_with = "deserialize_optional_f64")]
     pub average_price: Option<f64>,
+    /// NSE returns trade quantities as floats (with `.0`) in some reports.
     #[serde(rename = "TTL_TRD_QNTY", deserialize_with = "deserialize_optional_f64")]
     pub total_traded_quantity: Option<f64>,
     #[serde(rename = "TURNOVER_LACS", deserialize_with = "deserialize_optional_f64")]
     pub turnover: Option<f64>,
+    /// NSE returns trade counts as floats in some reports.
     #[serde(rename = "NO_OF_TRADES", deserialize_with = "deserialize_optional_f64")]
     pub no_of_trades: Option<f64>,
 }
 
-fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+/// Custom deserializer for optional f64, handling comma separators and placeholder characters.
+pub(crate) fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let s: Option<String> = Option::deserialize(deserializer)?;
-    match s {
-        Some(s) => {
-            let clean = s.replace(",", "").trim().to_string();
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrFloat {
+        String(String),
+        Float(f64),
+    }
+
+    let val = Option::<StringOrFloat>::deserialize(deserializer)?;
+    match val {
+        Some(StringOrFloat::String(s)) => {
+            // Use char literal for single-character replace — avoids &str pattern overhead.
+            let clean = s.replace(',', "").trim().to_string();
             if clean.is_empty() || clean == "-" {
                 Ok(None)
             } else {
-                clean.parse::<f64>().map(Some).map_err(serde::de::Error::custom)
+                clean
+                    .parse::<f64>()
+                    .map(Some)
+                    .map_err(serde::de::Error::custom)
             }
         }
+        Some(StringOrFloat::Float(f)) => Ok(Some(f)),
         None => Ok(None),
     }
 }
