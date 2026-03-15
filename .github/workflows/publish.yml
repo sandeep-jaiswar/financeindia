@@ -67,7 +67,7 @@ jobs:
         run: |
           pushd /tmp
           python -m pip install --upgrade pip
-          pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
+          python -m pip install --no-index ${{ github.workspace }}/dist/financeindia-*.whl
           PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
           popd
 
@@ -103,15 +103,6 @@ jobs:
           args: --release --out dist --zig -i python3.13
           sccache: 'true'
           manylinux: musllinux_1_2
-
-      - name: Test Wheel Import
-        if: matrix.platform.target == 'x86_64'
-        run: |
-          pushd /tmp
-          python -m pip install --upgrade pip
-          pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
-          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
-          popd
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -150,11 +141,11 @@ jobs:
       - name: Test Wheel Import
         if: matrix.platform.target == 'x64'
         run: |
-          mkdir %TEMP%\test_wheel
-          pushd %TEMP%\test_wheel
+          mkdir "${{ runner.temp }}\test_wheel"
+          pushd "${{ runner.temp }}\test_wheel"
           python -m pip install --upgrade pip
-          pip install --no-index --find-links %GITHUB_WORKSPACE%\dist financeindia
-          set PYTHONPATH=&& python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          python -m pip install --no-index --find-links "${{ github.workspace }}/dist" financeindia
+          $env:PYTHONPATH=""; python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
           popd
 
       - name: Upload wheels
@@ -189,7 +180,7 @@ jobs:
         run: |
           pushd /tmp
           python -m pip install --upgrade pip
-          pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
+          python -m pip install --no-index ${{ github.workspace }}/dist/financeindia-*.whl
           PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
           popd
 
