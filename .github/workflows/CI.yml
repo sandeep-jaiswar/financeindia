@@ -75,7 +75,7 @@ jobs:
           pushd /tmp
           python -m pip install --upgrade pip
           pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
-          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
           popd
 
       - name: Upload wheels
@@ -117,7 +117,7 @@ jobs:
           pushd /tmp
           python -m pip install --upgrade pip
           pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
-          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
           popd
 
       - name: Upload wheels
@@ -161,7 +161,7 @@ jobs:
           pushd %TEMP%\test_wheel
           python -m pip install --upgrade pip
           pip install --no-index --find-links %GITHUB_WORKSPACE%\dist financeindia
-          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          set PYTHONPATH=&& python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
           popd
 
       - name: Upload wheels
@@ -197,7 +197,7 @@ jobs:
           pushd /tmp
           python -m pip install --upgrade pip
           pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
-          python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
           popd
 
       - name: Upload wheels

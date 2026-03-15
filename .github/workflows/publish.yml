@@ -65,9 +65,11 @@ jobs:
       - name: Test Wheel Import
         if: matrix.platform.target == 'x86_64'
         run: |
+          pushd /tmp
           python -m pip install --upgrade pip
-          pip install --no-index --find-links dist financeindia
+          pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
           PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          popd
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -105,9 +107,11 @@ jobs:
       - name: Test Wheel Import
         if: matrix.platform.target == 'x86_64'
         run: |
+          pushd /tmp
           python -m pip install --upgrade pip
-          pip install --no-index --find-links dist financeindia
+          pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
           PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          popd
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -146,9 +150,12 @@ jobs:
       - name: Test Wheel Import
         if: matrix.platform.target == 'x64'
         run: |
+          mkdir %TEMP%\test_wheel
+          pushd %TEMP%\test_wheel
           python -m pip install --upgrade pip
-          pip install --no-index --find-links dist financeindia
+          pip install --no-index --find-links %GITHUB_WORKSPACE%\dist financeindia
           set PYTHONPATH=&& python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          popd
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
@@ -180,9 +187,11 @@ jobs:
 
       - name: Test Wheel Import
         run: |
+          pushd /tmp
           python -m pip install --upgrade pip
-          pip install --no-index --find-links dist financeindia
+          pip install --no-index --find-links $GITHUB_WORKSPACE/dist financeindia
           PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          popd
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6
