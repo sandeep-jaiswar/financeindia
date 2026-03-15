@@ -28,7 +28,17 @@ def test_top_gainers_losers(client):
 def test_equity_list(client):
     data = client.get_equity_list()
     assert len(data) > 0
-    assert hasattr(data[0], 'symbol')
+
+def test_equity_data_endpoints(client):
+    # Test a few core equity data endpoints
+    assert client.get_equity_quote("RELIANCE") is not None
+    assert client.get_most_active("NIFTY 50") is not None
+    assert client.get_advances_declines() is not None
+
+# Indices Module
+def test_indices_endpoints(client):
+    assert client.get_all_indices() is not None
+    assert client.get_index_constituents("NIFTY 50") is not None
 
 # Derivatives Module
 def test_fo_sec_ban(client):
@@ -43,12 +53,18 @@ def test_option_chain(client, symbol, is_index):
     data = client.get_option_chain(symbol, is_index)
     assert data is not None
 
+# Corporate & Surveillance
+def test_corporate_surveillance(client):
+    assert client.get_corporate_actions() is not None
+    assert client.get_gsm_stocks() is not None
+    assert client.get_asm_stocks() is not None
+
 # SLB Module
-def test_slb_eligible(client):
+def test_slb_endpoints(client):
     assert client.get_slb_eligible() is not None
+    assert client.get_slb_series_master() is not None
 
 # Error Handling Exception Tests
 def test_missing_data_exception(client):
     with pytest.raises(Exception):
-        # A bad symbol quote should raise Python RuntimeError from PyErr
         client.get_equity_quote("INVALID_TICKER_9999")

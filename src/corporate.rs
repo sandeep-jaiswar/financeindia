@@ -1,14 +1,14 @@
-use crate::common::{fetch_text, parse_date_robust};
+use crate::common::{fetch_bytes, parse_date_robust};
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use std::collections::HashMap;
 
 /// Fetches financial results metadata.
-pub fn financial_results(
+pub async fn financial_results(
     client: &Client,
     symbol: &str,
     from_date: &str,
@@ -26,21 +26,22 @@ pub fn financial_results(
         to.format(crate::common::NSE_DATE_FMT),
         encoded_period
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/companies-listing/corporate-filings-financial-results"),
     )
+    .await
 }
 
 /// Fetches upcoming corporate actions.
-pub fn corporate_actions(client: &Client) -> PyResult<bytes::Bytes> {
+pub async fn corporate_actions(client: &Client) -> PyResult<bytes::Bytes> {
     let url = "https://www.nseindia.com/api/corporates-corporateActions?index=equities";
-    fetch_text(client, url, Some(crate::common::NSE_ALL_REPORTS_URL))
+    fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Downloads and parses an XBRL file into JSON.
-pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes::Bytes> {
+pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes::Bytes> {
     // SSRF Validation
     let url = reqwest::Url::parse(xbrl_url)
         .map_err(|e| PyErr::new::<PyValueError, _>(format!("Invalid URL: {}", e)))?;
@@ -56,7 +57,7 @@ pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes::Bytes
         ));
     }
 
-    let xml_bytes = fetch_text(client, xbrl_url, Some("https://www.nseindia.com/"))?;
+    let xml_bytes = fetch_bytes(client, xbrl_url, Some("https://www.nseindia.com/")).await?;
     let xml_str = String::from_utf8(xml_bytes.to_vec())
         .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("UTF-8 Error: {}", e)))?;
     let mut reader = Reader::from_str(&xml_str);
@@ -89,10 +90,14 @@ pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes::Bytes
                             let mut fact = serde_json::Map::new();
                             fact.insert("value".to_string(), serde_json::Value::String(text));
                             if !current_attrs.is_empty() {
-                                fact.insert(
-                                    "attrs".to_string(),
-                                    serde_json::to_value(&current_attrs).unwrap_or_default(),
-                                );
+                                let attrs_value =
+                                    serde_json::to_value(&current_attrs).map_err(|e| {
+                                        PyErr::new::<PyRuntimeError, _>(format!(
+                                            "Attr serialization error: {}",
+                                            e
+                                        ))
+                                    })?;
+                                fact.insert("attrs".to_string(), attrs_value);
                             }
                             results
                                 .entry(tag.clone())
@@ -120,7 +125,11 @@ pub fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> PyResult<bytes::Bytes
 }
 
 /// Fetches insider trades (PIT) data for a given date range.
-pub fn insider_trades(client: &Client, from_date: &str, to_date: &str) -> PyResult<bytes::Bytes> {
+pub async fn insider_trades(
+    client: &Client,
+    from_date: &str,
+    to_date: &str,
+) -> PyResult<bytes::Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let url = format!(
@@ -128,9 +137,10 @@ pub fn insider_trades(client: &Client, from_date: &str, to_date: &str) -> PyResu
         from.format(crate::common::NSE_DATE_FMT),
         to.format(crate::common::NSE_DATE_FMT)
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/companies-listing/corporate-filings-insider-trading"),
     )
+    .await
 }

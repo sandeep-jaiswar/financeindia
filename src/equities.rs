@@ -1,23 +1,23 @@
-use crate::common::{fetch_bytes, fetch_text, parse_date_robust, read_first_text_file_from_zip};
+use crate::common::{fetch_bytes, parse_date_robust, read_first_text_file_from_zip};
 use bytes::Bytes;
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode, utf8_percent_encode};
 use pyo3::prelude::*;
-use reqwest::blocking::Client;
+use reqwest::Client;
 
 /// Fetches the Equity Bhavcopy (UDiFF format) for a given date.
-pub fn bhav_copy_equities(client: &Client, date: &str) -> PyResult<bytes::Bytes> {
+pub async fn bhav_copy_equities(client: &Client, date: &str) -> PyResult<bytes::Bytes> {
     let d = parse_date_robust(date)?;
     let url = format!(
         "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{}_F_0000.csv.zip",
         d.format("%Y%m%d")
     );
 
-    let bytes = fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL))?;
+    let bytes = fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL)).await?;
     read_first_text_file_from_zip(bytes)
 }
 
 /// Fetches historical price and volume data for a given security.
-pub fn price_volume_data(
+pub async fn price_volume_data(
     client: &Client,
     symbol: &str,
     from_date: &str,
@@ -32,15 +32,20 @@ pub fn price_volume_data(
         to.format(crate::common::NSE_DATE_FMT),
         encoded_symbol
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/report-detail/eq_security"),
     )
+    .await
 }
 
 /// Fetches bulk deal data for a date range.
-pub fn bulk_deal_data(client: &Client, from_date: &str, to_date: &str) -> PyResult<bytes::Bytes> {
+pub async fn bulk_deal_data(
+    client: &Client,
+    from_date: &str,
+    to_date: &str,
+) -> PyResult<bytes::Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let url = format!(
@@ -48,15 +53,20 @@ pub fn bulk_deal_data(client: &Client, from_date: &str, to_date: &str) -> PyResu
         from.format(crate::common::NSE_DATE_FMT),
         to.format(crate::common::NSE_DATE_FMT)
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/report-detail/display-bulk-and-block-deals"),
     )
+    .await
 }
 
 /// Fetches block deals data for a date range.
-pub fn block_deals_data(client: &Client, from_date: &str, to_date: &str) -> PyResult<bytes::Bytes> {
+pub async fn block_deals_data(
+    client: &Client,
+    from_date: &str,
+    to_date: &str,
+) -> PyResult<bytes::Bytes> {
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let url = format!(
@@ -64,15 +74,16 @@ pub fn block_deals_data(client: &Client, from_date: &str, to_date: &str) -> PyRe
         from.format(crate::common::NSE_DATE_FMT),
         to.format(crate::common::NSE_DATE_FMT)
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/report-detail/display-bulk-and-block-deals"),
     )
+    .await
 }
 
 /// Fetches short selling data for a date range.
-pub fn short_selling_data(
+pub async fn short_selling_data(
     client: &Client,
     from_date: &str,
     to_date: &str,
@@ -84,21 +95,22 @@ pub fn short_selling_data(
         from.format(crate::common::NSE_DATE_FMT),
         to.format(crate::common::NSE_DATE_FMT)
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/report-detail/display-bulk-and-block-deals"),
     )
+    .await
 }
 
 /// Fetches advances and declines data.
-pub fn advances_declines(client: &Client) -> PyResult<bytes::Bytes> {
-    let url = "https://www.nseindia.com/api/marketStatus";
-    fetch_text(client, url, Some(crate::common::NSE_ALL_REPORTS_URL))
+pub async fn advances_declines(client: &Client) -> PyResult<bytes::Bytes> {
+    let url = "https://www.nseindia.com/api/equity-stockIndices?index=ALL%20INDICES";
+    fetch_bytes(client, url, Some("https://www.nseindia.com/market-data/live-equity-market")).await
 }
 
 /// Fetches monthly settlement statistics.
-pub fn monthly_settlement_stats(client: &Client, fin_year: &str) -> PyResult<bytes::Bytes> {
+pub async fn monthly_settlement_stats(client: &Client, fin_year: &str) -> PyResult<bytes::Bytes> {
     // fin_year format: YYYY-YYYY
     let parts: Vec<&str> = fin_year.split('-').collect();
     if parts.len() != 2 || parts[0].len() != 4 || parts[1].len() != 4 {
@@ -124,43 +136,44 @@ pub fn monthly_settlement_stats(client: &Client, fin_year: &str) -> PyResult<byt
         "https://www.nseindia.com/api/historicalOR/monthly-sett-stats-data?finYear={}",
         fin_year
     );
-    fetch_text(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL))
+    fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetches 52 week high/low data.
-pub fn fifty_two_week_high_low(client: &Client, mode: &str) -> PyResult<bytes::Bytes> {
+pub async fn fifty_two_week_high_low(client: &Client, mode: &str) -> PyResult<bytes::Bytes> {
     let url = if mode == "low" {
         "https://www.nseindia.com/api/live-analysis-data-52weeklowstock"
     } else {
         "https://www.nseindia.com/api/live-analysis-data-52weekhighstock"
     };
-    fetch_text(client, url, Some(crate::common::NSE_ALL_REPORTS_URL))
+    fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetches most active securities.
-pub fn most_active(client: &Client, mode: &str) -> PyResult<Bytes> {
+pub async fn most_active(client: &Client, mode: &str) -> PyResult<Bytes> {
     let encoded_mode = utf8_percent_encode(mode, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/live-analysis-most-active-securities?index={}",
         encoded_mode
     );
-    fetch_text(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL))
+    fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetches top gainers.
-pub fn top_gainers(client: &Client) -> PyResult<bytes::Bytes> {
+pub async fn top_gainers(client: &Client) -> PyResult<bytes::Bytes> {
     let url = "https://www.nseindia.com/api/live-analysis-variations?index=gainers";
-    fetch_text(client, url, Some(crate::common::NSE_ALL_REPORTS_URL))
+    fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetches top losers.
-pub fn top_losers(client: &Client) -> PyResult<bytes::Bytes> {
+pub async fn top_losers(client: &Client) -> PyResult<bytes::Bytes> {
+    // NOTE: NSE's API endpoint intentionally uses "loosers" (their typo). Do not "correct" this.
     let url = "https://www.nseindia.com/api/live-analysis-variations?index=loosers";
-    fetch_text(client, url, Some(crate::common::NSE_ALL_REPORTS_URL))
+    fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetches deliverable position data for a given security.
-pub fn deliverable_position_data(
+pub async fn deliverable_position_data(
     client: &Client,
     symbol: &str,
     from_date: &str,
@@ -175,32 +188,79 @@ pub fn deliverable_position_data(
         to.format(crate::common::NSE_DATE_FMT),
         encoded_symbol
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/report-detail/eq_security"),
     )
+    .await
 }
 
 /// Fetches the list of all active equities.
-pub fn equity_list(client: &Client) -> PyResult<bytes::Bytes> {
+pub async fn equity_list(client: &Client) -> PyResult<bytes::Bytes> {
     let url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv";
-    fetch_text(client, url, Some("https://www.nseindia.com"))
+    fetch_bytes(client, url, Some("https://www.nseindia.com")).await
 }
 
 /// Fetches a detailed quote for an equity symbol.
-pub fn equity_quote(client: &Client, symbol: &str) -> PyResult<bytes::Bytes> {
+pub async fn equity_quote(client: &Client, symbol: &str) -> PyResult<bytes::Bytes> {
     let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/quote-equity?symbol={}",
         encoded_symbol
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some(&format!(
             "https://www.nseindia.com/get-quotes/equity?symbol={}",
             encoded_symbol
         )),
-    )
+    .await
+}
+
+/// Fetches Additional Surveillance Measure (ASM) stocks.
+pub async fn asm_stocks(client: &Client) -> PyResult<bytes::Bytes> {
+    let url = "https://www.nseindia.com/api/reportASM";
+    fetch_bytes(client, url, Some("https://www.nseindia.com/reports/asm")).await
+}
+
+/// Fetches Graded Surveillance Measure (GSM) stocks.
+pub async fn gsm_stocks(client: &Client) -> PyResult<bytes::Bytes> {
+    let url = "https://www.nseindia.com/api/reportGSM";
+    fetch_bytes(client, url, Some("https://www.nseindia.com/reports/gsm")).await
+}
+
+/// Fetches FII/DII trading activity.
+pub async fn fii_dii_activity(client: &Client) -> PyResult<bytes::Bytes> {
+    let url = "https://www.nseindia.com/api/fiidiiTradeReact";
+    fetch_bytes(client, url, Some("https://www.nseindia.com/reports/fii-dii")).await
+}
+
+/// Fetches detailed FII statistics (.xls).
+pub async fn fii_stats(client: &Client, date: &str) -> PyResult<bytes::Bytes> {
+    let d = parse_date_robust(date)?;
+    let url = format!(
+        "https://nsearchives.nseindia.com/content/fo/fii_stats_{}.xls",
+        d.format("%d-%b-%Y")
+    );
+    fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
+}
+
+/// Fetches market turnover.
+pub async fn market_turnover(client: &Client) -> PyResult<bytes::Bytes> {
+    let url = "https://www.nseindia.com/api/market-turnover-popup";
+    fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
+}
+
+/// Fetches market holidays.
+pub async fn holidays(client: &Client) -> PyResult<bytes::Bytes> {
+    let url = "https://www.nseindia.com/api/holiday-master?type=trading";
+    fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
+}
+
+/// Returns the current market status.
+pub async fn market_status(client: &Client) -> PyResult<bytes::Bytes> {
+    let url = "https://www.nseindia.com/api/marketStatus";
+    fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }

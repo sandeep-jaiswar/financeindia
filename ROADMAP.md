@@ -12,8 +12,8 @@ This document outlines the planned work and future direction for the `financeind
 ## 🟡 v0.2.0 (Near-Term: Feature Expansion)
 - [ ] **Full Async Support**: Expose `asyncio` compatible methods using `reqwest` async core.
 - [ ] **Commodities & Currency**: Exhaustive coverage for MCX and NSE Currency segments.
-- [ ] **Data Frame Integration**: Optional `pandas` or `polars` integration for direct data loading.
-- [ ] **Streaming Data**: Investigate WebSocket support for live market feeds.
+- [ ] **Data Frame Integration**: Optional `polars` integration for direct data loading.
+
 
 ## 🔴 v1.0.0 (Long-Term: Ecosystem & Stability)
 - [ ] **Documentation Site**: Dedicated documentation portal with API references and tutorials.

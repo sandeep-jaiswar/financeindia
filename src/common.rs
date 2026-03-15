@@ -3,20 +3,67 @@ use chrono::NaiveDate;
 use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use reqwest::header::{ACCEPT, REFERER};
-use std::thread;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use tokio::time::sleep;
 
 /// Centralized NSE API Headers & URLs
 pub const NSE_ALL_REPORTS_URL: &str = "https://www.nseindia.com/all-reports";
-pub const NSE_GET_QUOTE_URL: &str = "https://www.nseindia.com/get-quotes/equity";
 pub const NSE_DATE_FMT: &str = "%d-%m-%Y";
+pub const SESSION_REFRESH_INTERVAL: Duration = Duration::from_secs(900);
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Common helper to build a pre-configured NSE-compatible HTTP Client.
+pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> PyResult<Client> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        ),
+    );
+    headers.insert(
+        reqwest::header::ACCEPT,
+        reqwest::header::HeaderValue::from_static("*/*"),
+    );
+    headers.insert(
+        reqwest::header::ACCEPT_LANGUAGE,
+        reqwest::header::HeaderValue::from_static("en-US,en;q=0.9"),
+    );
+    headers.insert(
+        reqwest::header::CACHE_CONTROL,
+        reqwest::header::HeaderValue::from_static("no-cache"),
+    );
+    headers.insert(
+        reqwest::header::PRAGMA,
+        reqwest::header::HeaderValue::from_static("no-cache"),
+    );
+
+    if let Some(extra) = extra_headers {
+        for (key, value) in extra.iter() {
+            headers.insert(key.clone(), value.clone());
+        }
+    }
+
+    reqwest::ClientBuilder::new()
+        .default_headers(headers)
+        .cookie_store(true)
+        .timeout(DEFAULT_TIMEOUT)
+        .build()
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(e.to_string()))
+}
 
 /// Internal helper to parse dates from various common formats.
 pub fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
     let formats = [
-        NSE_DATE_FMT, "%Y-%m-%d", "%d%m%Y", "%Y%m%d", "%d-%b-%Y", "%d%b%Y",
+        NSE_DATE_FMT,
+        "%Y-%m-%d",
+        "%d%m%Y",
+        "%Y%m%d",
+        "%d-%b-%Y",
+        "%d%b%Y",
     ];
 
     let clean = date.replace("/", "-");
@@ -45,10 +92,8 @@ pub fn parse_date_robust(date: &str) -> PyResult<NaiveDate> {
     )))
 }
 
-use std::io::Read;
-
 /// Internal helper to execute a GET request and return raw bytes.
-pub fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> PyResult<Bytes> {
+pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> PyResult<Bytes> {
     let mut last_error = String::new();
     let mut delay = Duration::from_millis(500);
 
@@ -58,26 +103,23 @@ pub fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> PyResul
             rb = rb.header(REFERER, r);
         }
 
-        match rb.send() {
+        match rb.send().await {
             Ok(resp) => match resp.error_for_status() {
                 Ok(checked) => {
-                    let mut buf = Vec::new();
-                    // Limit reading to 50MB (+1 byte to detect overflow)
-                    match checked.take(50 * 1024 * 1024 + 1).read_to_end(&mut buf) {
-                        Ok(_) => {
-                            if buf.len() > 50 * 1024 * 1024 {
-                                return Err(PyErr::new::<PyRuntimeError, _>(format!(
-                                    "Response from {} exceeded 50MB limit",
-                                    url
-                                )));
-                            }
-                            return Ok(Bytes::from(buf));
-                        }
-                        Err(e) => {
+                    if let Some(len) = checked.content_length() {
+                        if len > 50 * 1024 * 1024 {
                             return Err(PyErr::new::<PyRuntimeError, _>(format!(
-                                "Error reading response body from {}: {}",
-                                url, e
+                                "Response from {} exceeded 50MB limit",
+                                url
                             )));
+                        }
+                    }
+                    match checked.bytes().await {
+                        Ok(b) => return Ok(b),
+                        Err(e) => {
+                            last_error = format!("Error reading body from {} on attempt {}: {}", url, attempt, e);
+                            sleep(delay).await;
+                            delay *= 2;
                         }
                     }
                 }
@@ -91,31 +133,37 @@ pub fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> PyResul
                     if e.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS)
                         || e.status().map(|s| s.is_server_error()).unwrap_or(false)
                     {
-                        thread::sleep(delay);
+                        sleep(delay).await;
                         delay *= 2;
                     } else {
                         return Err(PyErr::new::<PyRuntimeError, _>(last_error));
                     }
                 }
             },
+            Ok(resp) => {
+                // This branch shouldn't really be reached after error_for_status but for safety:
+                last_error = format!("Unknown error for {} on attempt {}", url, attempt);
+                sleep(delay).await;
+                delay *= 2;
+            }
             Err(e) => {
                 last_error = format!("Network error for {} on attempt {}: {}", url, attempt, e);
-                thread::sleep(delay);
+                sleep(delay).await;
                 delay *= 2;
             }
         }
     }
 
     Err(PyErr::new::<PyRuntimeError, _>(format!(
-        "Failed to fetch data from {} after 3 attempts. Last error: {}",
+        "Failed to fetch data from {} after 3 attempts. {}",
         url, last_error
     )))
 }
 
-/// Internal helper to execute a GET request and return the raw Bytes.
-/// (We remove the old `fetch_text` that allocated Strings)
-pub fn fetch_text(client: &Client, url: &str, referer: Option<&str>) -> PyResult<Bytes> {
-    fetch_bytes(client, url, referer)
+/// Shared helper to parse raw JSON bytes into a `serde_json::Value`, mapping errors to Python exceptions.
+pub fn parse_json_value(bytes: &[u8]) -> PyResult<serde_json::Value> {
+    serde_json::from_slice(bytes)
+        .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("JSON parse error: {e}")))
 }
 
 /// Helper to parse CSV string into a Columnar Python dictionary (Dict[str, List[Any]]).
@@ -225,4 +273,30 @@ where
     }
 
     Ok(list.into_any().unbind())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_date_robust() {
+        assert!(parse_date_robust("2023-01-01").is_ok());
+        assert!(parse_date_robust("01-01-2023").is_ok());
+        assert!(parse_date_robust("01-Jan-2023").is_ok());
+        assert!(parse_date_robust("20230101").is_ok());
+        assert!(parse_date_robust("invalid").is_err());
+    }
+
+    #[test]
+    fn test_date_robust_formats() {
+        let d1 = parse_date_robust("2023-05-15").unwrap();
+        assert_eq!(d1.to_string(), "2023-05-15");
+
+        let d2 = parse_date_robust("15-05-2023").unwrap();
+        assert_eq!(d2.to_string(), "2023-05-15");
+
+        let d3 = parse_date_robust("15-May-2023").unwrap();
+        assert_eq!(d3.to_string(), "2023-05-15");
+    }
 }

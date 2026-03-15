@@ -1,26 +1,26 @@
-use crate::common::{fetch_text, parse_date_robust};
+use crate::common::{fetch_bytes, parse_date_robust};
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use pyo3::prelude::*;
-use reqwest::blocking::Client;
+use reqwest::Client;
 
 /// Fetches a list of all NSE market indices.
-pub fn all_indices(client: &Client) -> PyResult<bytes::Bytes> {
+pub async fn all_indices(client: &Client) -> PyResult<bytes::Bytes> {
     let url = "https://www.nseindia.com/api/allIndices";
-    fetch_text(client, url, Some(crate::common::NSE_ALL_REPORTS_URL))
+    fetch_bytes(client, url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetches constituent stocks for a given index.
-pub fn index_constituents(client: &Client, index: &str) -> PyResult<bytes::Bytes> {
+pub async fn index_constituents(client: &Client, index: &str) -> PyResult<bytes::Bytes> {
     let encoded_index = percent_encode(index.as_bytes(), NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/equity-stockIndices?index={}",
         encoded_index
     );
-    fetch_text(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL))
+    fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL)).await
 }
 
 /// Fetches historical index data (OHLCV).
-pub fn index_history(
+pub async fn index_history(
     client: &Client,
     index: &str,
     from_date: &str,
@@ -35,15 +35,16 @@ pub fn index_history(
         from.format(crate::common::NSE_DATE_FMT),
         to.format(crate::common::NSE_DATE_FMT)
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/reports-indices-historical-index-data"),
     )
+    .await
 }
 
 /// Fetches P/E, P/B and Div Yield for a given index.
-pub fn index_yield(
+pub async fn index_yield(
     client: &Client,
     index: &str,
     from_date: &str,
@@ -58,15 +59,16 @@ pub fn index_yield(
         from.format(crate::common::NSE_DATE_FMT),
         to.format(crate::common::NSE_DATE_FMT)
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/reports-indices-yield"),
     )
+    .await
 }
 
 /// Fetches India VIX historical data.
-pub fn india_vix_history(
+pub async fn india_vix_history(
     client: &Client,
     from_date: &str,
     to_date: &str,
@@ -78,15 +80,16 @@ pub fn india_vix_history(
         from.format(crate::common::NSE_DATE_FMT),
         to.format(crate::common::NSE_DATE_FMT)
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/reports-indices-historical-vix"),
     )
+    .await
 }
 
 /// Fetches Total Returns Index (TRI) values.
-pub fn total_returns_index(
+pub async fn total_returns_index(
     client: &Client,
     index: &str,
     from_date: &str,
@@ -101,9 +104,10 @@ pub fn total_returns_index(
         from.format(crate::common::NSE_DATE_FMT),
         to.format(crate::common::NSE_DATE_FMT)
     );
-    fetch_text(
+    fetch_bytes(
         client,
         &url,
         Some("https://www.nseindia.com/reports-indices-historical-index-data"),
     )
+    .await
 }

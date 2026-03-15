@@ -34,7 +34,7 @@ pub struct MarketStatusResponse {
 #[pyclass(get_all)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct Holiday {
-    #[serde(rename = "Sr_no")]
+    #[serde(rename = "sr_no")]
     pub sr_no: i32,
     pub description: Option<String>,
     #[serde(rename = "tradingDate")]
@@ -45,9 +45,7 @@ pub struct Holiday {
 #[pyclass(get_all)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ASMStock {
-    #[serde(rename = "asmSurvIndicator")]
     pub indicator: Option<String>,
-    #[serde(rename = "asmTime")]
     pub time: Option<String>,
     #[serde(rename = "companyName")]
     pub company_name: Option<String>,
@@ -66,51 +64,48 @@ pub struct GSMStock {
 #[pyclass(get_all)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct EquityInfo {
-    #[serde(rename = "SYMBOL")]
     pub symbol: Option<String>,
-    #[serde(rename = "NAME OF COMPANY")]
+    #[serde(rename = "companyName")]
     pub company_name: Option<String>,
-    #[serde(rename = " SERIES")]
     pub series: Option<String>,
-    #[serde(rename = " DATE OF LISTING")]
+    #[serde(rename = "listingDate")]
     pub listing_date: Option<String>,
-    #[serde(rename = " PAID UP VALUE")]
+    #[serde(rename = "paidUpValue")]
     pub paid_up_value: Option<f64>,
-    #[serde(rename = " MARKET LOT")]
+    #[serde(rename = "marketLot")]
     pub market_lot: Option<String>,
-    #[serde(rename = " ISIN NUMBER")]
     pub isin: Option<String>,
-    #[serde(rename = " FACE VALUE")]
+    #[serde(rename = "faceValue")]
     pub face_value: Option<f64>,
 }
 
 #[pyclass(get_all)]
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PriceVolumeRow {
-    #[serde(rename = "Symbol  ", default)]
+    #[serde(rename = "SYMBOL")]
     pub symbol: Option<String>,
-    #[serde(rename = "Series  ", default)]
+    #[serde(rename = "SERIES")]
     pub series: Option<String>,
-    #[serde(rename = "Date  ", default)]
+    #[serde(rename = "DATE1")]
     pub date: Option<String>,
-    #[serde(rename = "Prev Close  ", default)]
+    #[serde(rename = "PREV_CLOSE")]
     pub prev_close: Option<String>,
-    #[serde(rename = "Open Price  ", default)]
+    #[serde(rename = "OPEN_PRICE")]
     pub open_price: Option<String>,
-    #[serde(rename = "High Price  ", default)]
+    #[serde(rename = "HIGH_PRICE")]
     pub high_price: Option<String>,
-    #[serde(rename = "Low Price  ", default)]
+    #[serde(rename = "LOW_PRICE")]
     pub low_price: Option<String>,
-    #[serde(rename = "Last Price  ", default)]
+    #[serde(rename = "LAST_PRICE")]
     pub last_price: Option<String>,
-    #[serde(rename = "Close Price  ", default)]
+    #[serde(rename = "CLOSE_PRICE")]
     pub close_price: Option<String>,
-    #[serde(rename = "Average Price ", default)]
+    #[serde(rename = "AVG_PRICE")]
     pub average_price: Option<String>,
-    #[serde(rename = "Total Traded Quantity  ", default)]
+    #[serde(rename = "TTL_TRD_QNTY")]
     pub total_traded_quantity: Option<String>,
-    #[serde(rename = "Turnover ₹  ", default)]
+    #[serde(rename = "TURNOVER_LACS")]
     pub turnover: Option<String>,
-    #[serde(rename = "No. of Trades  ", default)]
+    #[serde(rename = "NO_OF_TRADES")]
     pub no_of_trades: Option<String>,
 }
