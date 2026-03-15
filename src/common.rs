@@ -5,6 +5,7 @@ use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use reqwest::Client;
 use reqwest::header::REFERER;
+use serde::{self, Deserialize};
 use std::io::Read;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -268,5 +269,35 @@ mod tests {
     fn test_parse_date_slash_separator() {
         // Slashes should be normalised to hyphens before parsing.
         assert!(parse_date_robust("15/05/2023").is_ok());
+    }
+}
+
+/// Custom deserializer for optional f64, handling comma separators and placeholder characters.
+pub fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum StringOrFloat {
+        String(String),
+        Float(f64),
+    }
+
+    let val = Option::<StringOrFloat>::deserialize(deserializer)?;
+    match val {
+        Some(StringOrFloat::String(s)) => {
+            let clean = s.replace(',', "").trim().to_string();
+            if clean.is_empty() || clean == "-" {
+                Ok(None)
+            } else {
+                clean
+                    .parse::<f64>()
+                    .map(Some)
+                    .map_err(serde::de::Error::custom)
+            }
+        }
+        Some(StringOrFloat::Float(f)) => Ok(Some(f)),
+        None => Ok(None),
     }
 }

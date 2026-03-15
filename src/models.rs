@@ -1,3 +1,4 @@
+use crate::common::deserialize_optional_f64;
 use pyo3::prelude::*;
 use serde::Deserialize;
 
@@ -111,35 +112,4 @@ pub struct PriceVolumeRow {
     /// NSE returns trade counts as floats in some reports.
     #[serde(rename = "NO_OF_TRADES", deserialize_with = "deserialize_optional_f64")]
     pub no_of_trades: Option<f64>,
-}
-
-/// Custom deserializer for optional f64, handling comma separators and placeholder characters.
-pub(crate) fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrFloat {
-        String(String),
-        Float(f64),
-    }
-
-    let val = Option::<StringOrFloat>::deserialize(deserializer)?;
-    match val {
-        Some(StringOrFloat::String(s)) => {
-            // Use char literal for single-character replace — avoids &str pattern overhead.
-            let clean = s.replace(',', "").trim().to_string();
-            if clean.is_empty() || clean == "-" {
-                Ok(None)
-            } else {
-                clean
-                    .parse::<f64>()
-                    .map(Some)
-                    .map_err(serde::de::Error::custom)
-            }
-        }
-        Some(StringOrFloat::Float(f)) => Ok(Some(f)),
-        None => Ok(None),
-    }
 }
