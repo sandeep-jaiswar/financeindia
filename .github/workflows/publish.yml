@@ -62,6 +62,15 @@ jobs:
           args: --release --out dist --zig --compatibility manylinux_2_34 -i python3.13
           sccache: 'true'
 
+      - name: Test Wheel Import
+        if: matrix.platform.target == 'x86_64'
+        run: |
+          pushd /tmp
+          python -m pip install --upgrade pip
+          python -m pip install --no-index ${{ github.workspace }}/dist/financeindia-*.whl
+          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          popd
+
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -83,6 +92,10 @@ jobs:
             target: armv7
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        if: matrix.platform.target == 'x86_64'
+        with:
+          python-version: "3.13.11"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -125,6 +138,16 @@ jobs:
           args: --release --out dist -i python3.13
           sccache: 'true'
 
+      - name: Test Wheel Import
+        if: matrix.platform.target == 'x64'
+        run: |
+          mkdir "${{ runner.temp }}\test_wheel"
+          pushd "${{ runner.temp }}\test_wheel"
+          python -m pip install --upgrade pip
+          python -m pip install --no-index --find-links "${{ github.workspace }}/dist" financeindia
+          $env:PYTHONPATH=""; python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          popd
+
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -152,6 +175,14 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.13
           sccache: 'true'
+
+      - name: Test Wheel Import
+        run: |
+          pushd /tmp
+          python -m pip install --upgrade pip
+          python -m pip install --no-index ${{ github.workspace }}/dist/financeindia-*.whl
+          PYTHONPATH="" python -c "import financeindia; client = financeindia.FinanceClient(); print('Successfully initialized FinanceClient')"
+          popd
 
       - name: Upload wheels
         uses: actions/upload-artifact@v6

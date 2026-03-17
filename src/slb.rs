@@ -1,15 +1,57 @@
-use pyo3::prelude::*;
-use reqwest::blocking::Client;
-use crate::common::{parse_date_robust, fetch_text};
+use crate::common::{fetch_bytes, parse_date_robust};
+use crate::error::FinanceResult;
+use bytes::Bytes;
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use reqwest::Client;
 
-/// Fetches SLB Bhavcopy (DAT).
-pub fn slb_bhavcopy(client: &Client, date: &str) -> PyResult<String> {
+/// Fetches SLB Bhavcopy (DAT file) for a given date.
+pub async fn slb_bhavcopy(client: &Client, date: &str) -> FinanceResult<Bytes> {
     let d = parse_date_robust(date)?;
-    // Pattern: https://nsearchives.nseindia.com/archives/slbs/bhavcopy/SLBM_BC_09032026.DAT
     let url = format!(
         "https://nsearchives.nseindia.com/archives/slbs/bhavcopy/SLBM_BC_{}.DAT",
         d.format("%d%m%Y")
     );
-    fetch_text(client, &url, Some("https://www.nseindia.com/market-data/securities-lending-and-borrowing"))
+    fetch_bytes(
+        client,
+        &url,
+        Some("https://www.nseindia.com/market-data/securities-lending-and-borrowing"),
+    )
+    .await
 }
 
+/// Fetches SLB eligible securities suggestions.
+pub async fn slb_eligible(client: &Client) -> FinanceResult<Bytes> {
+    let url = "https://www.nseindia.com/api/quote/suggest/equity/slb";
+    fetch_bytes(
+        client,
+        url,
+        Some("https://www.nseindia.com/market-data/securities-lending-and-borrowing"),
+    )
+    .await
+}
+
+/// Fetches SLB live analysis / open positions for a specific series.
+pub async fn live_analysis_slb(client: &Client, series: &str) -> FinanceResult<Bytes> {
+    let encoded_series = utf8_percent_encode(series, NON_ALPHANUMERIC).to_string();
+    let url = format!(
+        "https://www.nseindia.com/api/live-analysis-slb?series={}",
+        encoded_series
+    );
+    fetch_bytes(
+        client,
+        &url,
+        Some("https://www.nseindia.com/market-data/securities-lending-and-borrowing"),
+    )
+    .await
+}
+
+/// Fetches SLB series master (available months).
+pub async fn slb_series_master(client: &Client) -> FinanceResult<Bytes> {
+    let url = "https://www.nseindia.com/api/live-analysis-slb-series-master";
+    fetch_bytes(
+        client,
+        url,
+        Some("https://www.nseindia.com/market-data/securities-lending-and-borrowing"),
+    )
+    .await
+}
