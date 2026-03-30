@@ -35,6 +35,16 @@ impl BhavArchive {
         dates: Vec<String>,
         output_path: String,
     ) -> PyResult<(usize, Vec<String>)> {
+        if output_path.contains("..")
+            || output_path.contains(':')
+            || output_path.starts_with('/')
+            || output_path.starts_with('\\')
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Invalid output path: Path traversal or absolute paths are not allowed.",
+            ));
+        }
+
         py.allow_threads(|| {
             crate::runtime().block_on(async move {
                 let path = Path::new(&output_path);
