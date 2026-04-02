@@ -74,9 +74,11 @@ impl BhavArchive {
                         res.map_err(|e| FinanceError::Runtime(e.to_string()))?;
                     match result {
                         Ok(data) => {
-                            // Use the raw date string as given by the caller for the filename,
-                            // so the archive reflects what the caller requested.
-                            zip.start_file(format!("bhav_{}.csv", date), options)
+                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
+                            // by replacing OS-specific directory separators with underscores.
+                            let sanitized_date = date.replace('/', "_").replace('\\', "_");
+                            // Use the sanitized date string for the filename.
+                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
                                 .map_err(|e| FinanceError::Runtime(e.to_string()))?;
                             zip.write_all(&data).map_err(FinanceError::Io)?;
                             success_count += 1;
