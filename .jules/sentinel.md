@@ -1,0 +1,4 @@
+## 2025-01-20 - Fix Path Traversal in ZIP Archive Creation
+**Vulnerability:** In `src/archive.rs`, the `BhavArchive` struct allowed user-supplied `date` strings to be directly formatted into internal ZIP entry filenames (`bhav_{}.csv`) without sanitization. An attacker could potentially supply strings like `../../../etc/passwd` leading to Zip Slip / path traversal when users extract the generated ZIP archive.
+**Learning:** Even internal formatting that uses user-provided strings for filenames must be sanitized. Standard directory separators (`/`, `\`) should be replaced to prevent file paths from being manipulated by user input.
+**Prevention:** Always sanitize input by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' when generating filenames from user-supplied strings inside ZIP archives.
