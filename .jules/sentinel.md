@@ -1,0 +1,4 @@
+## 2025-02-28 - Zip Slip / Path Traversal Risk in Archive Filenames
+**Vulnerability:** Path traversal via unsanitized user-supplied strings used directly in ZIP archive filenames (e.g., `zip.start_file(format!("bhav_{}.csv", date), options)` in `src/archive.rs`).
+**Learning:** Incorporating external input (like user-requested dates) into paths within an archive can allow attackers to inject path traversal sequences (`../`), potentially causing extracted files to overwrite arbitrary local files (Zip Slip).
+**Prevention:** Always sanitize any user-supplied strings intended for filenames by replacing OS-specific directory separators (`/` and `\`) with a safe character like `_` before embedding them into archive structures.
