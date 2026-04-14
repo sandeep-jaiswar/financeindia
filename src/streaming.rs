@@ -14,7 +14,25 @@ pub struct MarketStream {
 impl MarketStream {
     #[new]
     pub fn new(url: String) -> PyResult<Self> {
-        url::Url::parse(&url).map_err(FinanceError::UrlParse).map_err(PyErr::from)?;
+        let parsed_url = url::Url::parse(&url).map_err(FinanceError::UrlParse).map_err(PyErr::from)?;
+
+        let scheme = parsed_url.scheme();
+        if scheme != "ws" && scheme != "wss" {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "Only ws and wss schemes are allowed".to_string(),
+            )));
+        }
+
+        let host = parsed_url.host_str().ok_or_else(|| {
+            PyErr::from(FinanceError::Runtime("URL has no host".to_string()))
+        })?;
+
+        if !host.ends_with(".nseindia.com") && host != "nseindia.com" && !host.ends_with(".mcxindia.com") && host != "mcxindia.com" {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "URL host must be a trusted domain".to_string(),
+            )));
+        }
+
         Ok(MarketStream { url })
     }
 
