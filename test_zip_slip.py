@@ -1,4 +1,3 @@
-import pytest
 import financeindia
 import zipfile
 import tempfile
