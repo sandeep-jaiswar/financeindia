@@ -68,7 +68,7 @@ pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
     ];
 
     // Normalise slashes to hyphens, then try each known format.
-    let clean = date.replace('/', "-");
+    let clean = date.replace('/', "-").replace('\\', "-");
     for fmt in formats {
         if let Ok(d) = NaiveDate::parse_from_str(&clean, fmt) {
             return Ok(d);
