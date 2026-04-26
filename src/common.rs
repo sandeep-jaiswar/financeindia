@@ -49,10 +49,31 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         headers.extend(extra);
     }
 
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
+            attempt.error("too many redirects")
+        } else {
+            if let Some(host) = attempt.url().host_str() {
+                if host == "nseindia.com"
+                    || host.ends_with(".nseindia.com")
+                    || host == "mcxindia.com"
+                    || host.ends_with(".mcxindia.com")
+                {
+                    attempt.follow()
+                } else {
+                    attempt.error("Untrusted redirect host to prevent SSRF")
+                }
+            } else {
+                attempt.error("Redirect missing host")
+            }
+        }
+    });
+
     Ok(reqwest::ClientBuilder::new()
         .default_headers(headers)
         .cookie_store(true)
         .timeout(DEFAULT_TIMEOUT)
+        .redirect(policy)
         .build()?)
 }
 
