@@ -10,3 +10,7 @@
 **Vulnerability:** The `MarketStream::new` constructor in `src/streaming.rs` accepted any URL directly without validating its scheme or host. This allowed Server-Side Request Forgery (SSRF) where an attacker could stream internal endpoints or unauthorized hosts via the WebSocket client.
 **Learning:** Directly passing user-supplied URLs to network clients (`tokio_tungstenite::connect_async`) without filtering allowed schemes and domains opens up SSRF vectors, even in WebSocket clients.
 **Prevention:** Always validate URL schemes and implement an explicit whitelist of trusted domains for outgoing network connections.
+## 2026-04-29 - SSRF in HTTP Client Redirects
+**Vulnerability:** The `build_client` function in `src/common.rs` created a `reqwest::Client` that followed redirects by default without validating the redirect destination. This allowed an attacker to redirect a trusted request to an untrusted or internal network destination.
+**Learning:** Default redirect behavior in HTTP clients can bypass initial URL validations, creating an SSRF vector if the target domain changes via an open redirect.
+**Prevention:** Always implement a custom redirect policy (`reqwest::redirect::Policy`) that enforces an allowlist of trusted domains and limits the number of redirects when following them.
