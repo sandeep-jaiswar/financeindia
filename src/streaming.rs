@@ -80,13 +80,11 @@ impl MarketStream {
                             // Prefer a structured Python dict/list when the frame is JSON.
                             let py_val =
                                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(text) {
-                                    crate::to_py_obj(py, val).unwrap_or_else(|_| {
+                                    crate::to_py_obj(py, val).or_else(|_| {
                                         pyo3::IntoPyObjectExt::into_py_any(text, py)
-                                            .expect("&str into Python must not fail")
-                                    })
+                                    })?
                                 } else {
-                                    pyo3::IntoPyObjectExt::into_py_any(text, py)
-                                        .expect("&str into Python must not fail")
+                                    pyo3::IntoPyObjectExt::into_py_any(text, py)?
                                 };
                             callback.call1(py, (py_val,))
                         })
