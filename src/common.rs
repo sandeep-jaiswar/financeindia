@@ -5,6 +5,7 @@ use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use reqwest::Client;
 use reqwest::header::REFERER;
+use reqwest::redirect::Policy;
 use serde::{self, Deserialize};
 use std::io::Read;
 use std::time::Duration;
@@ -49,9 +50,30 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         headers.extend(extra);
     }
 
+    let redirect_policy = Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
+            return attempt.error("too many redirects");
+        }
+
+        if let Some(host) = attempt.url().host_str() {
+            if host == "nseindia.com"
+                || host.ends_with(".nseindia.com")
+                || host == "mcxindia.com"
+                || host.ends_with(".mcxindia.com")
+            {
+                attempt.follow()
+            } else {
+                attempt.error("untrusted redirect host")
+            }
+        } else {
+            attempt.error("missing host in redirect url")
+        }
+    });
+
     Ok(reqwest::ClientBuilder::new()
         .default_headers(headers)
         .cookie_store(true)
+        .redirect(redirect_policy)
         .timeout(DEFAULT_TIMEOUT)
         .build()?)
 }
