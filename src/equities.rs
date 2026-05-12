@@ -238,7 +238,12 @@ pub async fn gsm_stocks(client: &Client) -> FinanceResult<Bytes> {
 /// Fetches FII/DII trading activity.
 pub async fn fii_dii_activity(client: &Client) -> FinanceResult<Bytes> {
     let url = "https://www.nseindia.com/api/fiidiiTradeReact";
-    fetch_bytes(client, url, Some("https://www.nseindia.com/reports/fii-dii")).await
+    fetch_bytes(
+        client,
+        url,
+        Some("https://www.nseindia.com/reports/fii-dii"),
+    )
+    .await
 }
 
 /// Fetches detailed FII statistics (Excel/XLS binary).

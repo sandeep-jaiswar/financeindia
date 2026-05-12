@@ -14,7 +14,9 @@ pub struct MarketStream {
 impl MarketStream {
     #[new]
     pub fn new(url: String) -> PyResult<Self> {
-        let parsed_url = url::Url::parse(&url).map_err(FinanceError::UrlParse).map_err(PyErr::from)?;
+        let parsed_url = url::Url::parse(&url)
+            .map_err(FinanceError::UrlParse)
+            .map_err(PyErr::from)?;
 
         let scheme = parsed_url.scheme();
         if scheme != "ws" && scheme != "wss" {
@@ -59,27 +61,29 @@ impl MarketStream {
         subscribe_msg: Option<String>,
     ) -> PyResult<()> {
         py.allow_threads(|| {
-            crate::runtime().block_on(async {
-                let (mut ws_stream, _) = connect_async(&self.url)
-                    .await
-                    .map_err(|e| FinanceError::Runtime(e.to_string()))?;
-
-                if let Some(msg) = subscribe_msg {
-                    ws_stream
-                        .send(Message::Text(msg.into()))
+            crate::runtime()
+                .block_on(async {
+                    let (mut ws_stream, _) = connect_async(&self.url)
                         .await
                         .map_err(|e| FinanceError::Runtime(e.to_string()))?;
-                }
 
-                while let Some(msg) = ws_stream.next().await {
-                    let msg = msg.map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                    if let Some(msg) = subscribe_msg {
+                        ws_stream
+                            .send(Message::Text(msg.into()))
+                            .await
+                            .map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                    }
 
-                    if msg.is_text() {
-                        let text = msg.to_text().unwrap_or_default();
-                        Python::with_gil(|py| {
-                            // Prefer a structured Python dict/list when the frame is JSON.
-                            let py_val =
-                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(text) {
+                    while let Some(msg) = ws_stream.next().await {
+                        let msg = msg.map_err(|e| FinanceError::Runtime(e.to_string()))?;
+
+                        if msg.is_text() {
+                            let text = msg.to_text().unwrap_or_default();
+                            Python::with_gil(|py| {
+                                // Prefer a structured Python dict/list when the frame is JSON.
+                                let py_val = if let Ok(val) =
+                                    serde_json::from_str::<serde_json::Value>(text)
+                                {
                                     crate::to_py_obj(py, val).unwrap_or_else(|_| {
                                         pyo3::IntoPyObjectExt::into_py_any(text, py)
                                             .expect("&str into Python must not fail")
@@ -88,21 +92,21 @@ impl MarketStream {
                                     pyo3::IntoPyObjectExt::into_py_any(text, py)
                                         .expect("&str into Python must not fail")
                                 };
-                            callback.call1(py, (py_val,))
-                        })
-                        .map_err(FinanceError::from)?;
-                    } else if msg.is_binary() {
-                        let data = msg.into_data();
-                        Python::with_gil(|py| {
-                            let py_data = pyo3::types::PyBytes::new(py, &data);
-                            callback.call1(py, (py_data,))
-                        })
-                        .map_err(FinanceError::from)?;
+                                callback.call1(py, (py_val,))
+                            })
+                            .map_err(FinanceError::from)?;
+                        } else if msg.is_binary() {
+                            let data = msg.into_data();
+                            Python::with_gil(|py| {
+                                let py_data = pyo3::types::PyBytes::new(py, &data);
+                                callback.call1(py, (py_data,))
+                            })
+                            .map_err(FinanceError::from)?;
+                        }
                     }
-                }
-                Ok::<(), FinanceError>(())
-            })
-            .map_err(PyErr::from)
+                    Ok::<(), FinanceError>(())
+                })
+                .map_err(PyErr::from)
         })
     }
 }

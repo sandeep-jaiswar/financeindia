@@ -74,7 +74,12 @@ impl AsyncFinanceClient {
     }
 
     fn _initialize_session<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        dispatch_async!(self, py, client, Python::with_gil(|py| Ok(().into_py_any(py)?)))
+        dispatch_async!(
+            self,
+            py,
+            client,
+            Python::with_gil(|py| Ok(().into_py_any(py)?))
+        )
     }
 
     fn get_market_status<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -82,8 +87,7 @@ impl AsyncFinanceClient {
             let bytes = crate::equities::market_status(&client).await?;
             Python::with_gil(|py| {
                 crate::common::parse_json_to_py_typed::<crate::models::MarketStatusResponse>(
-                    py,
-                    &bytes,
+                    py, &bytes,
                 )
             })
         })
@@ -102,7 +106,9 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::fii_dii_activity(&client).await?;
             Python::with_gil(|py| {
-                crate::common::parse_json_to_py_typed::<Vec<crate::models::FiiDiiActivity>>(py, &bytes)
+                crate::common::parse_json_to_py_typed::<Vec<crate::models::FiiDiiActivity>>(
+                    py, &bytes,
+                )
             })
         })
     }
@@ -569,7 +575,11 @@ impl AsyncFinanceClient {
         })
     }
 
-    fn get_oi_limits_cli_raw<'py>(&self, py: Python<'py>, date: String) -> PyResult<Bound<'py, PyAny>> {
+    fn get_oi_limits_cli_raw<'py>(
+        &self,
+        py: Python<'py>,
+        date: String,
+    ) -> PyResult<Bound<'py, PyAny>> {
         dispatch_async!(self, py, client, {
             let bytes = crate::derivatives::oi_client_limits(&client, &date).await?;
             Python::with_gil(|py| Ok(pyo3::types::PyBytes::new(py, &bytes).into_any().unbind()))
@@ -580,8 +590,9 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::derivatives::oi_client_limits(&client, &date).await?;
             Python::with_gil(|py| {
-                let s = String::from_utf8(bytes.to_vec())
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyUnicodeDecodeError, _>(e.to_string()))?;
+                let s = String::from_utf8(bytes.to_vec()).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyUnicodeDecodeError, _>(e.to_string())
+                })?;
                 Ok(s.into_py_any(py)?)
             })
         })
