@@ -109,7 +109,10 @@ pub struct PriceVolumeRow {
     /// NSE returns trade quantities as floats (with `.0`) in some reports.
     #[serde(rename = "TTL_TRD_QNTY", deserialize_with = "deserialize_optional_f64")]
     pub total_traded_quantity: Option<f64>,
-    #[serde(rename = "TURNOVER_LACS", deserialize_with = "deserialize_optional_f64")]
+    #[serde(
+        rename = "TURNOVER_LACS",
+        deserialize_with = "deserialize_optional_f64"
+    )]
     pub turnover: Option<f64>,
     /// NSE returns trade counts as floats in some reports.
     #[serde(rename = "NO_OF_TRADES", deserialize_with = "deserialize_optional_f64")]
