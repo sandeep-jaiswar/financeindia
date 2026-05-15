@@ -51,6 +51,8 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         headers.extend(extra);
     }
 
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
     let policy = Policy::custom(|attempt| {
         if attempt.previous().len() > 10 {
             return attempt.error("too many redirects");
@@ -74,6 +76,10 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
                 return attempt.follow();
             }
         }
+        attempt.stop()
+    });
+
+
         attempt.error("untrusted redirect target")
         let url = attempt.url();
         if url.scheme() != "https" && url.scheme() != "http" {
