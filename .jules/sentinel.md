@@ -7,6 +7,10 @@
 **Learning:** Directly interpolating user-controlled strings into file paths inside a zip archive without sanitization is a critical vulnerability vector.
 **Prevention:** Always sanitize input by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' when using them to construct internal ZIP archive filenames.
 
+## 2023-10-27 - SSRF vulnerability in MarketStream
+**Vulnerability:** `MarketStream` allowed connecting to arbitrary WebSocket URLs because it lacked scheme and domain validation in its constructor.
+**Learning:** Even though `url::Url::parse` validates format, it doesn't prevent connecting to unauthorized schemes (e.g. `file://` or non-TLS `ws://`) or malicious domains. This is especially problematic for components that accept user input for URLs.
+**Prevention:** Always validate URL schemes (e.g. enforcing `wss` or `ws` where appropriate) and implement an allowlist of trusted domains for any outbound network connections.
 ## 2024-05-24 - [Fix Server-Side Request Forgery (SSRF) in MarketStream]
 **Vulnerability:** Server-Side Request Forgery (SSRF). In `src/streaming.rs`, the `MarketStream::new` constructor accepted an arbitrary URL without validating the scheme or the host, allowing a malicious user to connect to internal services or untrusted endpoints.
 **Learning:** All user-provided URLs that the application connects to must be strictly validated to prevent SSRF, especially in libraries where user input might be indirectly controlled by external actors.
