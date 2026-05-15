@@ -1,9 +1,10 @@
 use crate::error::FinanceError;
 use pyo3::prelude::*;
 use reqwest::Client;
-use std::fs::File;
+use std::env;
+use std::fs::{symlink_metadata, File};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -35,9 +36,38 @@ impl BhavArchive {
         dates: Vec<String>,
         output_path: String,
     ) -> PyResult<(usize, Vec<String>)> {
+        let path = Path::new(&output_path);
+        for component in path.components() {
+            match component {
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                    return Err(pyo3::exceptions::PyValueError::new_err(
+                        "Invalid output path: Path traversal or absolute paths are not allowed.",
+                    ));
+                }
+                _ => {}
+            }
+        }
+
         py.allow_threads(|| {
             crate::runtime().block_on(async move {
                 let path = Path::new(&output_path);
+                if path.exists() {
+                    let metadata = symlink_metadata(path).map_err(FinanceError::Io)?;
+                    if metadata.is_symlink() {
+                        return Err(FinanceError::PyErr(pyo3::exceptions::PyValueError::new_err(
+                            "Invalid output path: Symlinks are not allowed.",
+                        )));
+                    }
+                }
+                let base = env::current_dir().map_err(FinanceError::Io)?;
+                if let Some(parent) = path.parent() {
+                    let canonical_parent = parent.canonicalize().map_err(FinanceError::Io)?;
+                    if !canonical_parent.starts_with(&base) {
+                        return Err(FinanceError::PyErr(pyo3::exceptions::PyValueError::new_err(
+                            "Invalid output path: Path resolves outside allowed directory.",
+                        )));
+                    }
+                }
                 let file = File::create(path).map_err(FinanceError::Io)?;
                 let mut zip = zip::ZipWriter::new(file);
                 // 0o644 — readable data files, not executable.
