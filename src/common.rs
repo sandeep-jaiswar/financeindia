@@ -155,6 +155,8 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
                 attempt.error("redirect to untrusted domain")
             }
         } else {
+            attempt.error("redirect with no host")
+        }
             attempt.error("invalid redirect url")
         }
             attempt.error("redirect to url without host")
