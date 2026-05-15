@@ -308,6 +308,14 @@ mod tests {
         // Slashes should be normalised to hyphens before parsing.
         assert!(parse_date_robust("15/05/2023").is_ok());
     }
+
+    #[test]
+    fn test_parse_date_backslash_separator() {
+        // Backslashes should be normalised to hyphens before parsing, matching slash behavior.
+        let result = parse_date_robust("15\\05\\2023");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().to_string(), "2023-05-15");
+    }
 }
 
 /// Custom deserializer for optional f64, handling comma separators and placeholder characters.
