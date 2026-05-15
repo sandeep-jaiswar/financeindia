@@ -1,3 +1,7 @@
+## 2025-02-28 - Zip Slip / Path Traversal Risk in Archive Filenames
+**Vulnerability:** Path traversal via unsanitized user-supplied strings used directly in ZIP archive filenames (e.g., `zip.start_file(format!("bhav_{}.csv", date), options)` in `src/archive.rs`).
+**Learning:** Incorporating external input (like user-requested dates) into paths within an archive can allow attackers to inject path traversal sequences (`../`), potentially causing extracted files to overwrite arbitrary local files (Zip Slip).
+**Prevention:** Always sanitize any user-supplied strings intended for filenames by replacing OS-specific directory separators (`/` and `\`) with a safe character like `_` before embedding them into archive structures.
 ## 2024-05-20 - Path Traversal in BhavArchive
 **Vulnerability:** The `BhavArchive.archive_equities` function accepted raw user input for `output_path` and passed it directly to `File::create(path)` without any validation.
 **Learning:** This allowed arbitrary file writes anywhere on the system (e.g. `../../etc/passwd` or `/absolute/path.zip`) by exploiting path traversal. The issue existed because the PyO3 wrapper lacked an explicit input sanitization layer before interacting with the host filesystem.
