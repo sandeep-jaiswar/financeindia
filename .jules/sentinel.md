@@ -1,3 +1,7 @@
+## 2024-04-06 - Path Traversal in ZIP Filenames
+**Vulnerability:** User-supplied strings (dates) were being directly interpolated into internal ZIP archive filenames (`zip.start_file(format!("bhav_{}.csv", date), options)`) without sanitization in `BhavArchive`. This could allow an attacker to inject `../` sequences in the `date` parameter, potentially writing files outside the intended archive directory upon extraction, leading to a Zip Slip / Path Traversal vulnerability.
+**Learning:** Even when incorporating user input into internal strings like filenames within an archive, explicit sanitization is required because the resulting artifact (a ZIP file) carries those potentially malicious paths to the extracting application.
+**Prevention:** Always sanitize input by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' before using them in internal path generation to prevent Zip Slip and path traversal vulnerabilities.
 ## 2024-06-25 - Path Traversal in Zip Archive Filenames
 **Vulnerability:** User input was not sanitized before being used as a filename in a zip archive.
 **Learning:** The application was vulnerable to path traversal (Zip Slip) because it allowed an attacker to write files outside of the intended directory by supplying a path with `../` sequences or absolute paths (like `/foo`) as the date string.
