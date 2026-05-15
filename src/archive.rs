@@ -2,7 +2,7 @@ use crate::error::FinanceError;
 use pyo3::prelude::*;
 use reqwest::Client;
 use std::env;
-use std::fs::{symlink_metadata, File};
+use std::fs::{File, symlink_metadata};
 use std::io::Write;
 use std::path::{Component, Path};
 use std::sync::Arc;
@@ -49,65 +49,143 @@ impl BhavArchive {
         }
 
         py.allow_threads(|| {
-            crate::runtime().block_on(async move {
-                let path = Path::new(&output_path);
-                if path.exists() {
-                    let metadata = symlink_metadata(path).map_err(FinanceError::Io)?;
-                    if metadata.is_symlink() {
-                        return Err(FinanceError::PyErr(pyo3::exceptions::PyValueError::new_err(
-                            "Invalid output path: Symlinks are not allowed.",
-                        )));
+            crate::runtime()
+                .block_on(async move {
+                    let path = Path::new(&output_path);
+                    if path.exists() {
+                        let metadata = symlink_metadata(path).map_err(FinanceError::Io)?;
+                        if metadata.is_symlink() {
+                            return Err(FinanceError::PyErr(
+                                pyo3::exceptions::PyValueError::new_err(
+                                    "Invalid output path: Symlinks are not allowed.",
+                                ),
+                            ));
+                        }
                     }
-                }
-                let base = env::current_dir().map_err(FinanceError::Io)?;
-                if let Some(parent) = path.parent() {
-                    let canonical_parent = parent.canonicalize().map_err(FinanceError::Io)?;
-                    if !canonical_parent.starts_with(&base) {
-                        return Err(FinanceError::PyErr(pyo3::exceptions::PyValueError::new_err(
-                            "Invalid output path: Path resolves outside allowed directory.",
-                        )));
+                    let base = env::current_dir().map_err(FinanceError::Io)?;
+                    if let Some(parent) = path.parent() {
+                        let canonical_parent = parent.canonicalize().map_err(FinanceError::Io)?;
+                        if !canonical_parent.starts_with(&base) {
+                            return Err(FinanceError::PyErr(
+                                pyo3::exceptions::PyValueError::new_err(
+                                    "Invalid output path: Path resolves outside allowed directory.",
+                                ),
+                            ));
+                        }
                     }
-                }
-                let file = File::create(path).map_err(FinanceError::Io)?;
-                let mut zip = zip::ZipWriter::new(file);
-                // 0o644 — readable data files, not executable.
-                let options: FileOptions<'_, ()> = FileOptions::default()
-                    .compression_method(zip::CompressionMethod::Stored)
-                    .unix_permissions(0o644);
+                    let file = File::create(path).map_err(FinanceError::Io)?;
+                    let mut zip = zip::ZipWriter::new(file);
+                    // 0o644 — readable data files, not executable.
+                    let options: FileOptions<'_, ()> = FileOptions::default()
+                        .compression_method(zip::CompressionMethod::Stored)
+                        .unix_permissions(0o644);
 
-                // Limit concurrent NSE downloads to avoid rate-limiting.
-                let semaphore = Arc::new(Semaphore::new(5));
-                let mut set: JoinSet<(String, crate::error::FinanceResult<bytes::Bytes>)> =
-                    JoinSet::new();
-                let client = self.client.clone();
+                    // Limit concurrent NSE downloads to avoid rate-limiting.
+                    let semaphore = Arc::new(Semaphore::new(5));
+                    let mut set: JoinSet<(String, crate::error::FinanceResult<bytes::Bytes>)> =
+                        JoinSet::new();
+                    let client = self.client.clone();
 
-                for date in dates {
-                    let sem_clone = semaphore.clone();
-                    let client_clone = client.clone();
-                    let date_clone = date.clone();
-                    set.spawn(async move {
-                        let _permit = sem_clone
-                            .acquire()
-                            .await
-                            .expect("BhavArchive semaphore should never close");
-                        let res =
-                            crate::equities::bhav_copy_equities(&client_clone, &date_clone).await;
-                        (date_clone, res)
-                    });
-                }
+                    for date in dates {
+                        let sem_clone = semaphore.clone();
+                        let client_clone = client.clone();
+                        let date_clone = date.clone();
+                        set.spawn(async move {
+                            let _permit = sem_clone
+                                .acquire()
+                                .await
+                                .expect("BhavArchive semaphore should never close");
+                            let res =
+                                crate::equities::bhav_copy_equities(&client_clone, &date_clone)
+                                    .await;
+                            (date_clone, res)
+                        });
+                    }
+                    }
+                    let file = File::create(path).map_err(FinanceError::Io)?;
+                    let mut zip = zip::ZipWriter::new(file);
+                    // 0o644 — readable data files, not executable.
+                    let options: FileOptions<'_, ()> = FileOptions::default()
+                        .compression_method(zip::CompressionMethod::Stored)
+                        .unix_permissions(0o644);
 
-                let mut success_count = 0;
-                let mut failed_dates = Vec::new();
+                    // Limit concurrent NSE downloads to avoid rate-limiting.
+                    let semaphore = Arc::new(Semaphore::new(5));
+                    let mut set: JoinSet<(String, crate::error::FinanceResult<bytes::Bytes>)> =
+                        JoinSet::new();
+                    let client = self.client.clone();
 
+                    for date in dates {
+                        let sem_clone = semaphore.clone();
+                        let client_clone = client.clone();
+                        let date_clone = date.clone();
+                        set.spawn(async move {
+                            let _permit = sem_clone
+                                .acquire()
+                                .await
+                                .expect("BhavArchive semaphore should never close");
+                            let res =
+                                crate::equities::bhav_copy_equities(&client_clone, &date_clone)
+                                    .await;
+                            (date_clone, res)
+                        });
+                    }
+
+                    let mut success_count = 0;
+                    let mut failed_dates = Vec::new();
+
+                    while let Some(res) = set.join_next().await {
+                        let (date, result) =
+                            res.map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                        match result {
+                            Ok(data) => {
+                                // Use the raw date string as given by the caller for the filename,
+                                // so the archive reflects what the caller requested.
+                                let sanitized_date = date.replace('/', "_").replace('\\', "_");
+                                zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
+                                    .map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                                zip.write_all(&data).map_err(FinanceError::Io)?;
+                                success_count += 1;
+                            }
+                            Err(e) => {
+                                // Log the failure but continue downloading the remaining dates.
+                                log::warn!("Failed to download bhavcopy for {}: {}", date, e);
+                                failed_dates.push(date);
+                            }
                 while let Some(res) = set.join_next().await {
                     let (date, result) =
                         res.map_err(|e| FinanceError::Runtime(e.to_string()))?;
                     match result {
                         Ok(data) => {
+                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
+                            let sanitized_date = date.replace('/', "_").replace('\\', "_");
+                            // Use the sanitized date string for the filename
+                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
+                            // Sanitize the date string to prevent Zip Slip and path traversal
+                            let safe_date = date.replace('/', "_").replace('\\', "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
                             // Use the raw date string as given by the caller for the filename,
                             // so the archive reflects what the caller requested.
+                            // Ensure the date string does not contain path separators to prevent path traversal
                             let sanitized_date = date.replace('/', "_").replace('\\', "_");
                             zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
+                            // Sanitize the date string to prevent Zip Slip and path traversal vulnerabilities.
+                            let safe_date = date.replace('/', "_").replace('\\', "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
+                            // Sanitize user input to prevent path traversal vulnerabilities.
+                            let sanitized_date = date.replace("/", "_").replace("\\", "_");
+                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
+                            // Sanitize the date string to prevent path traversal (Zip Slip)
+                            let safe_date = date.replace("/", "_").replace("\\", "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
+                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
+                            let safe_date = date.replace('/', "_").replace('\\', "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
+                            // Sanitize the date to prevent zip slip / path traversal inside the zip archive.
+                            let clean_date = sanitize_date_for_archive(&date);
+
+                            // Use the cleaned date string for the filename.
+                            zip.start_file(format!("bhav_{}.csv", clean_date), options)
                                 .map_err(|e| FinanceError::Runtime(e.to_string()))?;
                             zip.write_all(&data).map_err(FinanceError::Io)?;
                             success_count += 1;
@@ -118,19 +196,50 @@ impl BhavArchive {
                             failed_dates.push(date);
                         }
                     }
-                }
 
-                zip.finish().map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                    zip.finish()
+                        .map_err(|e| FinanceError::Runtime(e.to_string()))?;
 
-                if success_count == 0 {
-                    let _ = std::fs::remove_file(path).map_err(|e| {
-                        log::error!("Failed to remove empty archive at {}: {}", output_path, e);
-                    });
-                }
+                    if success_count == 0 {
+                        let _ = std::fs::remove_file(path).map_err(|e| {
+                            log::error!("Failed to remove empty archive at {}: {}", output_path, e);
+                        });
+                    }
 
-                Ok::<_, FinanceError>((success_count, failed_dates))
-            })
-            .map_err(PyErr::from)
+                    Ok::<_, FinanceError>((success_count, failed_dates))
+                })
+                .map_err(PyErr::from)
         })
+    }
+}
+
+/// Sanitize a date string for use in ZIP entry filenames.
+/// Replaces path separators ('/' and '\\') with underscores to prevent zip slip.
+fn sanitize_date_for_archive(date: &str) -> String {
+    date.replace('/', "_").replace('\\', "_")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_date_for_archive_forward_slash() {
+        assert_eq!(sanitize_date_for_archive("2023/01/01"), "2023_01_01");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_backslash() {
+        assert_eq!(sanitize_date_for_archive("2023\\02\\01"), "2023_02_01");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_mixed() {
+        assert_eq!(sanitize_date_for_archive("2023/01\\02"), "2023_01_02");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_no_separators() {
+        assert_eq!(sanitize_date_for_archive("2023-01-01"), "2023-01-01");
     }
 }

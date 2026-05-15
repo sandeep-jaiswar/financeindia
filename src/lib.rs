@@ -8,7 +8,7 @@
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use reqwest::Client;
-use std::sync::{RwLock, OnceLock};
+use std::sync::{OnceLock, RwLock};
 
 mod archive;
 mod async_client;
@@ -17,8 +17,8 @@ mod common;
 mod corporate;
 mod currency;
 mod derivatives;
-mod error;
 mod equities;
+mod error;
 mod indices;
 mod models;
 mod slb;
@@ -135,19 +135,26 @@ impl FinanceClient {
         })
     }
     fn _initialize_session(&self, py: Python<'_>) -> PyResult<()> {
-        Ok(py.allow_threads(|| crate::runtime().block_on(async { self._refresh_session_async().await }))?)
+        Ok(py.allow_threads(|| {
+            crate::runtime().block_on(async { self._refresh_session_async().await })
+        })?)
     }
 
     /// Returns the current market status for all segments.
     fn get_market_status(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::market_status)?;
-        Ok(common::parse_json_to_py_typed::<models::MarketStatusResponse>(py, &json_bytes)?)
+        Ok(common::parse_json_to_py_typed::<
+            models::MarketStatusResponse,
+        >(py, &json_bytes)?)
     }
 
     /// Returns the current list of NSE stock market holidays.
     fn get_holidays(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::holidays)?;
-        Ok(common::parse_json_to_py_typed::<Vec<models::Holiday>>(py, &json_bytes)?)
+        Ok(common::parse_json_to_py_typed::<Vec<models::Holiday>>(
+            py,
+            &json_bytes,
+        )?)
     }
 
     /// Returns FII and DII trading activity for the current day.
@@ -210,7 +217,9 @@ impl FinanceClient {
     /// Returns a list of all active equities listed on NSE.
     fn get_equity_list(&self, py: Python<'_>) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, equities::equity_list)?;
-        Ok(common::parse_csv_to_py_typed::<models::EquityInfo>(py, &csv_str)?)
+        Ok(common::parse_csv_to_py_typed::<models::EquityInfo>(
+            py, &csv_str,
+        )?)
     }
 
     /// Returns bulk deal data for a specific date range.
@@ -486,13 +495,19 @@ impl FinanceClient {
     /// Returns Additional Surveillance Measure (ASM) stocks.
     fn get_asm_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::asm_stocks)?;
-        Ok(common::parse_json_to_py_typed::<Vec<models::ASMStock>>(py, &json_bytes)?)
+        Ok(common::parse_json_to_py_typed::<Vec<models::ASMStock>>(
+            py,
+            &json_bytes,
+        )?)
     }
 
     /// Returns Graded Surveillance Measure (GSM) stocks.
     fn get_gsm_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::gsm_stocks)?;
-        Ok(common::parse_json_to_py_typed::<Vec<models::GSMStock>>(py, &json_bytes)?)
+        Ok(common::parse_json_to_py_typed::<Vec<models::GSMStock>>(
+            py,
+            &json_bytes,
+        )?)
     }
 
     /// Returns the list of securities currently in the F&O ban period.

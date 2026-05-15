@@ -105,8 +105,8 @@ pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> FinanceResult<B
                             let mut fact = serde_json::Map::new();
                             fact.insert("value".to_string(), serde_json::Value::String(text));
                             if !current_attrs.is_empty() {
-                                let attrs_value = serde_json::to_value(&current_attrs)
-                                    .map_err(|e| {
+                                let attrs_value =
+                                    serde_json::to_value(&current_attrs).map_err(|e| {
                                         FinanceError::Runtime(format!(
                                             "Attribute serialisation error: {}",
                                             e
