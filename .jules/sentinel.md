@@ -1,3 +1,7 @@
+## 2025-01-20 - [Path Traversal in ZIP Archive via Unsanitized Date String]
+**Vulnerability:** The application was using an unsanitized date string supplied by the caller directly into the filename of entries within a dynamically generated ZIP archive.
+**Learning:** If a malicious caller supplies a date string such as `../../etc/passwd` or `..\..\..\windows\system32\config\sam`, they can embed those relative paths within the ZIP archive. When extracted by a vulnerable unzipping tool or client script, the extracted files could potentially overwrite sensitive files outside of the intended extraction directory (Zip Slip vulnerability).
+**Prevention:** Always validate or sanitize user-controlled strings (replacing OS directory separator characters like `/` and `\`) before concatenating them into internal filenames for archives.
 ## 2024-04-06 - Path Traversal in ZIP Filenames
 **Vulnerability:** User-supplied strings (dates) were being directly interpolated into internal ZIP archive filenames (`zip.start_file(format!("bhav_{}.csv", date), options)`) without sanitization in `BhavArchive`. This could allow an attacker to inject `../` sequences in the `date` parameter, potentially writing files outside the intended archive directory upon extraction, leading to a Zip Slip / Path Traversal vulnerability.
 **Learning:** Even when incorporating user input into internal strings like filenames within an archive, explicit sanitization is required because the resulting artifact (a ZIP file) carries those potentially malicious paths to the extracting application.
