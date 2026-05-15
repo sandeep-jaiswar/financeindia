@@ -53,6 +53,8 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
 
     let policy = reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() > 10 {
+            attempt.error("too many redirects")
+        } else if let Some(host) = attempt.url().host_str() {
             return attempt.error("too many redirects");
         }
 
@@ -169,6 +171,11 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
             {
                 attempt.follow()
             } else {
+                attempt.error("untrusted redirect target")
+            }
+        } else {
+            attempt.error("invalid redirect url")
+        }
                 attempt.stop()
             }
         } else {

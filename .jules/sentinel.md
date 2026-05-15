@@ -72,6 +72,10 @@
 **Vulnerability:** The `MarketStream::new` constructor in `src/streaming.rs` accepted any URL directly without validating its scheme or host. This allowed Server-Side Request Forgery (SSRF) where an attacker could stream internal endpoints or unauthorized hosts via the WebSocket client.
 **Learning:** Directly passing user-supplied URLs to network clients (`tokio_tungstenite::connect_async`) without filtering allowed schemes and domains opens up SSRF vectors, even in WebSocket clients.
 **Prevention:** Always validate URL schemes and implement an explicit whitelist of trusted domains for outgoing network connections.
+## 2024-05-26 - [SSRF via Open Redirects in Client Builder]
+**Vulnerability:** The `reqwest::ClientBuilder` in `src/common.rs` used the default redirect policy which follows up to 10 redirects blindly to any host.
+**Learning:** Even if the initial request URL is validated and points to a trusted domain, an open redirect on that trusted domain could redirect the client to an untrusted or internal network address, leading to SSRF.
+**Prevention:** Always configure a custom `reqwest::redirect::Policy` when building a client to explicitly validate the redirect target URL host against a whitelist of trusted domains (e.g., `nseindia.com`, `mcxindia.com`).
 ## 2026-05-10 - [SSRF via Open Redirects in Custom HTTP Clients]
 **Vulnerability:** The HTTP client configured in `build_client` used the default `reqwest` redirect policy, which blindly follows redirects to any domain up to a maximum count. This allowed for potential Server-Side Request Forgery (SSRF) if an initially trusted endpoint returned an open redirect to an attacker-controlled or internal network address.
 **Learning:** Default HTTP client configurations often prioritize connectivity over security. Even when the initial request target is validated and trusted, subsequent redirects are not automatically subjected to the same validation logic unless explicitly configured.
