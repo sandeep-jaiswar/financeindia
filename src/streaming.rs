@@ -32,11 +32,63 @@ impl MarketStream {
             {
                 return Err(pyo3::exceptions::PyValueError::new_err(
                     "Untrusted host. Streaming is only allowed from nseindia.com or mcxindia.com domains.",
+        let parsed_url = url::Url::parse(&url)
+            .map_err(FinanceError::UrlParse)
+            .map_err(PyErr::from)?;
+        let parsed_url = url::Url::parse(&url).map_err(FinanceError::UrlParse).map_err(PyErr::from)?;
+
+        let scheme = parsed_url.scheme();
+        if scheme != "ws" && scheme != "wss" {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "Only ws and wss schemes are allowed".to_string()
+            )));
+        }
+
+        let host = parsed_url.host_str().ok_or_else(|| {
+            PyErr::from(FinanceError::Runtime("URL has no host".to_string()))
+        })?;
+
+        let is_trusted = host == "nseindia.com" || host.ends_with(".nseindia.com")
+            || host == "mcxindia.com" || host.ends_with(".mcxindia.com");
+
+        if !is_trusted {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "URL host must be a trusted domain (nseindia.com, mcxindia.com)".to_string()
+            )));
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Only ws and wss URLs are allowed",
+            ));
+        }
+
+        let host = parsed_url
+            .host_str()
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("URL has no host"))?;
+
+        if !host.ends_with(".nseindia.com")
+            && host != "nseindia.com"
+            && !host.ends_with(".mcxindia.com")
+            && host != "mcxindia.com"
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "URL host must be a trusted NSE or MCX domain",
+                "Invalid URL scheme: only ws and wss are allowed.",
+            ));
+        }
+
+        if let Some(host) = parsed_url.host_str() {
+            if !(host == "nseindia.com"
+                || host.ends_with(".nseindia.com")
+                || host == "mcxindia.com"
+                || host.ends_with(".mcxindia.com"))
+            {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Invalid domain: only nseindia.com, mcxindia.com and their subdomains are allowed.",
                 ));
             }
         } else {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "Invalid URL. No host found.",
+                "Invalid URL: missing host.",
             ));
         }
 
