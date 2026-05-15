@@ -72,6 +72,27 @@ def test_missing_data_exception(client):
         client.get_equity_quote("INVALID_TICKER_9999")
 
 def test_market_stream_ssrf_protection():
+    # Only wss/ws and valid domains should be accepted
+
+    # Invalid schemes
+    with pytest.raises(RuntimeError, match="Only ws and wss URLs are allowed"):
+        financeindia.MarketStream("https://nseindia.com/stream")
+    with pytest.raises(RuntimeError, match="Only ws and wss URLs are allowed"):
+        financeindia.MarketStream("http://nseindia.com/stream")
+
+    # Invalid hosts
+    with pytest.raises(RuntimeError, match="URL host must be a trusted domain"):
+        financeindia.MarketStream("wss://evil.com/stream")
+    with pytest.raises(RuntimeError, match="URL host must be a trusted domain"):
+        financeindia.MarketStream("wss://nseindia.com.evil.com/stream")
+
+    # Valid hosts
+    # Creating an instance shouldn't raise exception during instantiation
+    stream = financeindia.MarketStream("wss://nseindia.com/stream")
+    assert stream is not None
+
+    stream2 = financeindia.MarketStream("wss://mcxindia.com/stream")
+    assert stream2 is not None
     # Valid URLs
     financeindia.MarketStream("wss://stream.nseindia.com/market")
     financeindia.MarketStream("ws://mcxindia.com/stream")
