@@ -77,15 +77,16 @@ impl MarketStream {
 
                         if msg.is_text() {
                             let text = msg.to_text().unwrap_or_default();
-                            Python::with_gil(|py| {
+                            Python::with_gil(|py| -> PyResult<_> {
                                 let py_val = if let Ok(val) =
                                     serde_json::from_str::<serde_json::Value>(text)
                                 {
-                                    crate::to_py_obj(py, val).unwrap_or_else(|_| {
-                                        pyo3::IntoPyObjectExt::into_py_any(text, py).unwrap()
-                                    })
+                                    match crate::to_py_obj(py, val) {
+                                        Ok(obj) => obj,
+                                        Err(_) => pyo3::IntoPyObjectExt::into_py_any(text, py)?,
+                                    }
                                 } else {
-                                    pyo3::IntoPyObjectExt::into_py_any(text, py).unwrap()
+                                    pyo3::IntoPyObjectExt::into_py_any(text, py)?
                                 };
                                 callback.call1(py, (py_val,))
                             })
