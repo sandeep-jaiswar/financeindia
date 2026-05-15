@@ -70,6 +70,18 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         }
             return attempt.error("too many redirects");
         }
+        if let Some(host) = attempt.url().host_str() {
+            if !(host == "nseindia.com"
+                || host.ends_with(".nseindia.com")
+                || host == "mcxindia.com"
+                || host.ends_with(".mcxindia.com"))
+            {
+                return attempt.error("redirect to untrusted domain");
+            }
+        } else {
+            return attempt.error("redirect with no host");
+        }
+        attempt.follow()
 
     let custom_policy = reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() > 10 {

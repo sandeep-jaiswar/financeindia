@@ -77,6 +77,10 @@
 **Vulnerability:** Default `reqwest::Client` configuration follows redirects unconditionally. This can lead to Server-Side Request Forgery (SSRF) if a trusted domain issues an open redirect to a malicious internal or external endpoint.
 **Learning:** Initial validation of URLs is insufficient if redirects are automatically followed without re-validation.
 **Prevention:** Always use `reqwest::redirect::Policy::custom` to enforce domain whitelists and limit redirect depth when instantiating `reqwest::Client`.
+## 2024-05-26 - [SSRF via Open Redirect in HTTP Client]
+**Vulnerability:** The HTTP client configured in `src/common.rs` used the default `reqwest` redirect policy, which blindly follows redirects to any host up to 10 times. An attacker controlling an initially trusted endpoint could redirect the client to an internal IP or restricted domain, causing Server-Side Request Forgery (SSRF).
+**Learning:** Default redirect behavior in HTTP clients is often unsafe in environments that process data from external endpoints, as open redirects on those external endpoints can bypass initial URL validation.
+**Prevention:** Always configure an explicit, custom redirect policy (e.g. `reqwest::redirect::Policy::custom`) that enforces a strict whitelist of trusted target hosts (like `*.nseindia.com`) and bounds the maximum number of redirects.
 ## 2025-02-15 - SSRF via Open Redirects in Client Builder
 **Vulnerability:** The HTTP client configured in `src/common.rs` (`build_client`) did not set a custom redirect policy. Because `reqwest::Client` follows redirects to any domain by default, it was vulnerable to Server-Side Request Forgery (SSRF) if a trusted domain issued a malicious open redirect.
 **Learning:** Even if initial requests are strictly validated against a trusted whitelist (e.g., `nseindia.com`, `mcxindia.com`), an open redirect on these trusted hosts can route the request to a malicious internal or external server.
