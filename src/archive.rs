@@ -132,7 +132,7 @@ impl BhavArchive {
 }
 
 fn sanitize_date_for_archive(date: &str) -> String {
-    date.replace('/', "_").replace('\\', "_")
+    date.replace(['/', '\\'], "_")
 }
 
 #[cfg(test)]
