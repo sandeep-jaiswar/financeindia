@@ -21,6 +21,22 @@ impl MarketStream {
 
         let scheme = parsed_url.scheme();
         if scheme != "ws" && scheme != "wss" {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "Only ws and wss schemes are allowed".to_string()
+            )));
+        }
+
+        let host = parsed_url.host_str().ok_or_else(|| {
+            PyErr::from(FinanceError::Runtime("URL has no host".to_string()))
+        })?;
+
+        let is_trusted = host == "nseindia.com" || host.ends_with(".nseindia.com")
+            || host == "mcxindia.com" || host.ends_with(".mcxindia.com");
+
+        if !is_trusted {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "URL host must be a trusted domain (nseindia.com, mcxindia.com)".to_string()
+            )));
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "Only ws and wss URLs are allowed",
             ));
