@@ -153,6 +153,11 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
             {
                 attempt.follow()
             } else {
+                attempt.stop()
+            }
+        } else {
+            attempt.stop()
+        }
                 attempt.error("untrusted domain")
             }
         } else {
