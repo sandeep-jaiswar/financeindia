@@ -72,6 +72,10 @@
 **Vulnerability:** The `MarketStream::new` constructor in `src/streaming.rs` accepted any URL directly without validating its scheme or host. This allowed Server-Side Request Forgery (SSRF) where an attacker could stream internal endpoints or unauthorized hosts via the WebSocket client.
 **Learning:** Directly passing user-supplied URLs to network clients (`tokio_tungstenite::connect_async`) without filtering allowed schemes and domains opens up SSRF vectors, even in WebSocket clients.
 **Prevention:** Always validate URL schemes and implement an explicit whitelist of trusted domains for outgoing network connections.
+## 2024-05-26 - [SSRF via Open Redirect]
+**Vulnerability:** The HTTP client created in `src/common.rs` via `reqwest::ClientBuilder` did not restrict the domains it would follow during redirects. This allowed SSRF via open redirects, where an initially trusted domain could redirect the client to an untrusted or internal host.
+**Learning:** Even if the initial request is made to a trusted domain, open redirects on that domain can be exploited to bypass domain whitelists and perform SSRF if the HTTP client automatically follows redirects to any host.
+**Prevention:** Always configure a custom `reqwest::redirect::Policy` that enforces a strict whitelist of trusted target hosts (and prevents infinite redirect loops) to prevent open redirects from bypassing initial validation.
 ## 2024-05-26 - [Open Redirect in HTTP Client]
 **Vulnerability:** The HTTP client (`reqwest::Client`) in `src/common.rs` followed HTTP redirects by default without validating the target URL's host. This allowed Server-Side Request Forgery (SSRF) and open redirects, where an initially trusted server could redirect the client to an internal IP address or an untrusted domain.
 **Learning:** Default behavior of HTTP clients often includes following redirects unconditionally. Relying solely on validating the initial URL is insufficient if redirects can point anywhere. Furthermore, when defining a custom `reqwest::redirect::Policy`, the default redirect counter is entirely overwritten, so you must manually limit redirects.
