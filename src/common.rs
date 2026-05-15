@@ -146,6 +146,7 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
                 return attempt.follow();
             }
         }
+        attempt.error("redirect to untrusted domain")
         attempt.error("untrusted redirect domain")
                 attempt.follow()
             } else {
