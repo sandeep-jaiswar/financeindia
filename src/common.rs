@@ -119,6 +119,7 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         if attempt.previous().len() > 10 {
             return attempt.error("too many redirects");
         }
+
         let host = attempt.url().host_str().unwrap_or("");
         let is_allowed = host == "nseindia.com"
             || host.ends_with(".nseindia.com")
@@ -145,6 +146,13 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
                 || host == "mcxindia.com"
                 || host.ends_with(".mcxindia.com")
             {
+                attempt.follow()
+            } else {
+                attempt.error("untrusted redirect host")
+            }
+        } else {
+            attempt.error("missing host in redirect url")
+        }
                 return attempt.follow();
             }
         }
@@ -171,6 +179,7 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
     Ok(reqwest::ClientBuilder::new()
         .default_headers(headers)
         .cookie_store(true)
+        .redirect(redirect_policy)
         .timeout(DEFAULT_TIMEOUT)
         .redirect(custom_policy)
         .redirect(policy)
