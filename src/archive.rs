@@ -1,9 +1,10 @@
 use crate::error::FinanceError;
 use pyo3::prelude::*;
 use reqwest::Client;
-use std::fs::File;
+use std::env;
+use std::fs::{symlink_metadata, File};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -35,9 +36,38 @@ impl BhavArchive {
         dates: Vec<String>,
         output_path: String,
     ) -> PyResult<(usize, Vec<String>)> {
+        let path = Path::new(&output_path);
+        for component in path.components() {
+            match component {
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                    return Err(pyo3::exceptions::PyValueError::new_err(
+                        "Invalid output path: Path traversal or absolute paths are not allowed.",
+                    ));
+                }
+                _ => {}
+            }
+        }
+
         py.allow_threads(|| {
             crate::runtime().block_on(async move {
                 let path = Path::new(&output_path);
+                if path.exists() {
+                    let metadata = symlink_metadata(path).map_err(FinanceError::Io)?;
+                    if metadata.is_symlink() {
+                        return Err(FinanceError::PyErr(pyo3::exceptions::PyValueError::new_err(
+                            "Invalid output path: Symlinks are not allowed.",
+                        )));
+                    }
+                }
+                let base = env::current_dir().map_err(FinanceError::Io)?;
+                if let Some(parent) = path.parent() {
+                    let canonical_parent = parent.canonicalize().map_err(FinanceError::Io)?;
+                    if !canonical_parent.starts_with(&base) {
+                        return Err(FinanceError::PyErr(pyo3::exceptions::PyValueError::new_err(
+                            "Invalid output path: Path resolves outside allowed directory.",
+                        )));
+                    }
+                }
                 let file = File::create(path).map_err(FinanceError::Io)?;
                 let mut zip = zip::ZipWriter::new(file);
                 // 0o644 — readable data files, not executable.
@@ -77,6 +107,14 @@ impl BhavArchive {
                             // Sanitize the date string to prevent path traversal (Zip Slip)
                             let safe_date = date.replace("/", "_").replace("\\", "_");
                             zip.start_file(format!("bhav_{}.csv", safe_date), options)
+                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
+                            let safe_date = date.replace('/', "_").replace('\\', "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
+                            // Sanitize the date to prevent zip slip / path traversal inside the zip archive.
+                            let clean_date = sanitize_date_for_archive(&date);
+
+                            // Use the cleaned date string for the filename.
+                            zip.start_file(format!("bhav_{}.csv", clean_date), options)
                                 .map_err(|e| FinanceError::Runtime(e.to_string()))?;
                             zip.write_all(&data).map_err(FinanceError::Io)?;
                             success_count += 1;
@@ -101,5 +139,36 @@ impl BhavArchive {
             })
             .map_err(PyErr::from)
         })
+    }
+}
+
+/// Sanitize a date string for use in ZIP entry filenames.
+/// Replaces path separators ('/' and '\\') with underscores to prevent zip slip.
+fn sanitize_date_for_archive(date: &str) -> String {
+    date.replace('/', "_").replace('\\', "_")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_date_for_archive_forward_slash() {
+        assert_eq!(sanitize_date_for_archive("2023/01/01"), "2023_01_01");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_backslash() {
+        assert_eq!(sanitize_date_for_archive("2023\\02\\01"), "2023_02_01");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_mixed() {
+        assert_eq!(sanitize_date_for_archive("2023/01\\02"), "2023_01_02");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_no_separators() {
+        assert_eq!(sanitize_date_for_archive("2023-01-01"), "2023-01-01");
     }
 }
