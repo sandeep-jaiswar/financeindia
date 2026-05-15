@@ -104,6 +104,10 @@ impl BhavArchive {
                         res.map_err(|e| FinanceError::Runtime(e.to_string()))?;
                     match result {
                         Ok(data) => {
+                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
+                            let sanitized_date = date.replace('/', "_").replace('\\', "_");
+                            // Use the sanitized date string for the filename
+                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
                             // Sanitize the date string to prevent Zip Slip and path traversal
                             let safe_date = date.replace('/', "_").replace('\\', "_");
                             zip.start_file(format!("bhav_{}.csv", safe_date), options)

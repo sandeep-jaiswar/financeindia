@@ -1,3 +1,8 @@
+
+## 2024-05-24 - Zip Slip / Path Traversal in Archive Filenames
+**Vulnerability:** The application was using untrusted user input directly to generate filenames within a ZIP archive. This allows a malicious user to supply path traversal sequences (like `../`) that could result in arbitrary file overwrites when the generated ZIP is subsequently extracted.
+**Learning:** Even internal data processing mechanisms like dynamically generating archives need strict sanitization of variables inserted into structural file components. Input should never be implicitly trusted as just a safe value like a simple "date string".
+**Prevention:** Always sanitize any dynamic or user-controlled input used as part of a file path, even when generating files (like ZIP contents). In this specific instance, explicitly replacing OS-specific directory separators (`/` and `\`) with a safe character (`_`) mitigates the risk.
 ## 2025-01-20 - Fix Path Traversal in ZIP Archive Creation
 **Vulnerability:** In `src/archive.rs`, the `BhavArchive` struct allowed user-supplied `date` strings to be directly formatted into internal ZIP entry filenames (`bhav_{}.csv`) without sanitization. An attacker could potentially supply strings like `../../../etc/passwd` leading to Zip Slip / path traversal when users extract the generated ZIP archive.
 **Learning:** Even internal formatting that uses user-provided strings for filenames must be sanitized. Standard directory separators (`/`, `\`) should be replaced to prevent file paths from being manipulated by user input.
