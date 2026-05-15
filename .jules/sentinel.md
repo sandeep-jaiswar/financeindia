@@ -1,3 +1,7 @@
+## 2025-04-08 - Prevent Zip Slip in BhavArchive
+**Vulnerability:** Path traversal (Zip Slip) vulnerability during ZIP file creation
+**Learning:** Incorporating unvalidated user-supplied strings (like dates) directly into ZIP archive filenames allows attackers to craft filenames like `../` to manipulate where files are extracted when unzipped, potentially leading to arbitrary file overwrite.
+**Prevention:** Always sanitize user-supplied input used in internal archive filenames by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' to ensure files stay within the target extraction directory.
 ## 2025-02-28 - Zip Slip / Path Traversal Risk in Archive Filenames
 **Vulnerability:** Path traversal via unsanitized user-supplied strings used directly in ZIP archive filenames (e.g., `zip.start_file(format!("bhav_{}.csv", date), options)` in `src/archive.rs`).
 **Learning:** Incorporating external input (like user-requested dates) into paths within an archive can allow attackers to inject path traversal sequences (`../`), potentially causing extracted files to overwrite arbitrary local files (Zip Slip).
