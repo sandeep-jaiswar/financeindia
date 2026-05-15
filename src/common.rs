@@ -68,7 +68,7 @@ pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
     ];
 
     // Normalise slashes to hyphens, then try each known format.
-    let clean = date.replace('/', "-");
+    let clean = date.replace('/', "-").replace('\\', "-");
     for fmt in formats {
         if let Ok(d) = NaiveDate::parse_from_str(&clean, fmt) {
             return Ok(d);
@@ -307,6 +307,14 @@ mod tests {
     fn test_parse_date_slash_separator() {
         // Slashes should be normalised to hyphens before parsing.
         assert!(parse_date_robust("15/05/2023").is_ok());
+    }
+
+    #[test]
+    fn test_parse_date_backslash_separator() {
+        // Backslashes should be normalised to hyphens before parsing, matching slash behavior.
+        let result = parse_date_robust("15\\05\\2023");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().to_string(), "2023-05-15");
     }
 }
 
