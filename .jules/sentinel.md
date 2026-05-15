@@ -1,3 +1,32 @@
+
+## 2024-05-24 - Zip Slip / Path Traversal in Archive Filenames
+**Vulnerability:** The application was using untrusted user input directly to generate filenames within a ZIP archive. This allows a malicious user to supply path traversal sequences (like `../`) that could result in arbitrary file overwrites when the generated ZIP is subsequently extracted.
+**Learning:** Even internal data processing mechanisms like dynamically generating archives need strict sanitization of variables inserted into structural file components. Input should never be implicitly trusted as just a safe value like a simple "date string".
+**Prevention:** Always sanitize any dynamic or user-controlled input used as part of a file path, even when generating files (like ZIP contents). In this specific instance, explicitly replacing OS-specific directory separators (`/` and `\`) with a safe character (`_`) mitigates the risk.
+## 2025-01-20 - Fix Path Traversal in ZIP Archive Creation
+**Vulnerability:** In `src/archive.rs`, the `BhavArchive` struct allowed user-supplied `date` strings to be directly formatted into internal ZIP entry filenames (`bhav_{}.csv`) without sanitization. An attacker could potentially supply strings like `../../../etc/passwd` leading to Zip Slip / path traversal when users extract the generated ZIP archive.
+**Learning:** Even internal formatting that uses user-provided strings for filenames must be sanitized. Standard directory separators (`/`, `\`) should be replaced to prevent file paths from being manipulated by user input.
+**Prevention:** Always sanitize input by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' when generating filenames from user-supplied strings inside ZIP archives.
+## 2025-01-20 - [Path Traversal in ZIP Archive via Unsanitized Date String]
+**Vulnerability:** The application was using an unsanitized date string supplied by the caller directly into the filename of entries within a dynamically generated ZIP archive.
+**Learning:** If a malicious caller supplies a date string such as `../../etc/passwd` or `..\..\..\windows\system32\config\sam`, they can embed those relative paths within the ZIP archive. When extracted by a vulnerable unzipping tool or client script, the extracted files could potentially overwrite sensitive files outside of the intended extraction directory (Zip Slip vulnerability).
+**Prevention:** Always validate or sanitize user-controlled strings (replacing OS directory separator characters like `/` and `\`) before concatenating them into internal filenames for archives.
+## 2024-04-06 - Path Traversal in ZIP Filenames
+**Vulnerability:** User-supplied strings (dates) were being directly interpolated into internal ZIP archive filenames (`zip.start_file(format!("bhav_{}.csv", date), options)`) without sanitization in `BhavArchive`. This could allow an attacker to inject `../` sequences in the `date` parameter, potentially writing files outside the intended archive directory upon extraction, leading to a Zip Slip / Path Traversal vulnerability.
+**Learning:** Even when incorporating user input into internal strings like filenames within an archive, explicit sanitization is required because the resulting artifact (a ZIP file) carries those potentially malicious paths to the extracting application.
+**Prevention:** Always sanitize input by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' before using them in internal path generation to prevent Zip Slip and path traversal vulnerabilities.
+## 2024-06-25 - Path Traversal in Zip Archive Filenames
+**Vulnerability:** User input was not sanitized before being used as a filename in a zip archive.
+**Learning:** The application was vulnerable to path traversal (Zip Slip) because it allowed an attacker to write files outside of the intended directory by supplying a path with `../` sequences or absolute paths (like `/foo`) as the date string.
+**Prevention:** Sanitize user input by removing directory separators (`/` and `\`) before using it as a filename when adding files to a zip archive.
+## 2025-04-08 - Prevent Zip Slip in BhavArchive
+**Vulnerability:** Path traversal (Zip Slip) vulnerability during ZIP file creation
+**Learning:** Incorporating unvalidated user-supplied strings (like dates) directly into ZIP archive filenames allows attackers to craft filenames like `../` to manipulate where files are extracted when unzipped, potentially leading to arbitrary file overwrite.
+**Prevention:** Always sanitize user-supplied input used in internal archive filenames by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' to ensure files stay within the target extraction directory.
+## 2025-02-28 - Zip Slip / Path Traversal Risk in Archive Filenames
+**Vulnerability:** Path traversal via unsanitized user-supplied strings used directly in ZIP archive filenames (e.g., `zip.start_file(format!("bhav_{}.csv", date), options)` in `src/archive.rs`).
+**Learning:** Incorporating external input (like user-requested dates) into paths within an archive can allow attackers to inject path traversal sequences (`../`), potentially causing extracted files to overwrite arbitrary local files (Zip Slip).
+**Prevention:** Always sanitize any user-supplied strings intended for filenames by replacing OS-specific directory separators (`/` and `\`) with a safe character like `_` before embedding them into archive structures.
 ## 2024-05-20 - Path Traversal in BhavArchive
 **Vulnerability:** The `BhavArchive.archive_equities` function accepted raw user input for `output_path` and passed it directly to `File::create(path)` without any validation.
 **Learning:** This allowed arbitrary file writes anywhere on the system (e.g. `../../etc/passwd` or `/absolute/path.zip`) by exploiting path traversal. The issue existed because the PyO3 wrapper lacked an explicit input sanitization layer before interacting with the host filesystem.
@@ -6,6 +35,39 @@
 **Vulnerability:** Path Traversal / Zip Slip. In `src/archive.rs`, user-supplied dates were directly formatted into zip filenames, which would allow a malicious user to supply path traversal characters (`/` or `\`) in the date string and overwrite files outside the intended extraction directory.
 **Learning:** Directly interpolating user-controlled strings into file paths inside a zip archive without sanitization is a critical vulnerability vector.
 **Prevention:** Always sanitize input by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' when using them to construct internal ZIP archive filenames.
+
+## 2023-10-27 - SSRF vulnerability in MarketStream
+**Vulnerability:** `MarketStream` allowed connecting to arbitrary WebSocket URLs because it lacked scheme and domain validation in its constructor.
+**Learning:** Even though `url::Url::parse` validates format, it doesn't prevent connecting to unauthorized schemes (e.g. `file://` or non-TLS `ws://`) or malicious domains. This is especially problematic for components that accept user input for URLs.
+**Prevention:** Always validate URL schemes (e.g. enforcing `wss` or `ws` where appropriate) and implement an allowlist of trusted domains for any outbound network connections.
+## 2024-05-24 - [Fix Server-Side Request Forgery (SSRF) in MarketStream]
+**Vulnerability:** Server-Side Request Forgery (SSRF). In `src/streaming.rs`, the `MarketStream::new` constructor accepted an arbitrary URL without validating the scheme or the host, allowing a malicious user to connect to internal services or untrusted endpoints.
+**Learning:** All user-provided URLs that the application connects to must be strictly validated to prevent SSRF, especially in libraries where user input might be indirectly controlled by external actors.
+**Prevention:** Always validate URL schemes (e.g., `ws`/`wss` for WebSockets, `https` for APIs) and use an allowlist of trusted domains (e.g., `*.nseindia.com`, `*.mcxindia.com`) before establishing connections.
+## 2026-04-13 - [Fix SSRF vulnerability in WebSocket MarketStream]
+**Vulnerability:** Server-Side Request Forgery (SSRF) in `MarketStream::new` in `src/streaming.rs`. The WebSocket client accepted any URL from the user and established a connection, allowing a malicious actor to potentially probe internal network addresses or make connections to arbitrary external domains via our application's backend.
+**Learning:** WebSocket streaming clients built over generic libraries (like `tokio-tungstenite`) are just as vulnerable to SSRF as HTTP clients. Trusting user-provided URLs in constructor methods without domain/scheme validation bypasses boundary protections.
+**Prevention:** Always restrict user-provided URLs to explicit expected schemes (e.g., `ws`/`wss`) and a whitelist of trusted domains or hosts when initialising streaming connections or making HTTP requests on behalf of the user.
+## 2025-04-15 - [Fix SSRF vulnerability in websocket connection]
+**Vulnerability:** Server-Side Request Forgery (SSRF). In `src/streaming.rs`, the `MarketStream::new` constructor accepted arbitrary WebSocket URLs and connected to them without validating the URL scheme or host. This could allow an attacker to make the server establish connections to internal services or malicious external servers.
+**Learning:** External or user-controlled URLs must always be validated against a strict whitelist of allowed schemes and domains, especially before establishing long-lived network connections like WebSockets.
+**Prevention:** Enforce a strict domain whitelist (e.g., `nseindia.com`, `mcxindia.com`) and restrict allowed URL schemes (`ws`, `wss`) during WebSocket client instantiation to prevent SSRF attacks.
+## 2024-05-24 - [Fix SSRF in WebSocket Client]
+**Vulnerability:** Server-Side Request Forgery (SSRF). In `src/streaming.rs`, the `MarketStream::new` constructor previously accepted arbitrary URLs without validation, allowing a malicious user to initiate WebSocket connections to internal services or untrusted external domains.
+**Learning:** Accepting user-controlled URLs for outbound connections without proper scheme and domain validation exposes the system to SSRF vulnerabilities.
+**Prevention:** Always validate URLs against a strict whitelist of allowed schemes (e.g., `ws`/`wss`) and trusted domains before initiating outbound connections.
+## 2025-04-16 - [Fix SSRF vulnerability in MarketStream]
+**Vulnerability:** Server-Side Request Forgery (SSRF) in `MarketStream::new` (`src/streaming.rs`) where the WebSocket URL passed by the caller wasn't validated, allowing connections to arbitrary servers or internal resources.
+**Learning:** Even when building a library for external API fetching, accepting raw user-supplied URLs for data streaming endpoints introduces significant risks if not strictly constrained to the expected external domains.
+**Prevention:** Implement strict URL parsing, scheme validation (e.g. `ws` or `wss`), and enforce a whitelist of trusted target domains (`nseindia.com`, `mcxindia.com`) to ensure that users cannot abuse the tool to scan or attack internal network services.
+## 2025-05-24 - [Fix SSRF vulnerability in websocket client]
+**Vulnerability:** Server-Side Request Forgery (SSRF) in `MarketStream::new` (`src/streaming.rs`). The WebSocket client connected to any URL provided by the user without validating the scheme or host. This could be exploited by an attacker to make the server initiate WebSocket connections to internal services or unintended external endpoints.
+**Learning:** Network clients, even WebSockets, that accept arbitrary URLs must explicitly whitelist allowed schemes and hosts to prevent SSRF, particularly when they operate on behalf of a Python application running in potentially sensitive environments.
+**Prevention:** Enforce strict URL validation for all network clients. Verify that the protocol scheme is secure and intended (e.g., `ws`, `wss`) and strictly validate the destination host against an explicit whitelist of trusted domains (e.g., `nseindia.com`, `mcxindia.com`).
+## 2025-02-28 - [Fix SSRF vulnerability in MarketStream]
+**Vulnerability:** Server-Side Request Forgery (SSRF) and scheme bypass in `MarketStream`. The WebSocket client accepted any URL and any host (including `http`/`https` instead of just `ws`/`wss`) to establish market data streams, exposing the application to SSRF attacks if external users can influence the connection URL.
+**Learning:** WebSocket streaming clients must validate both the protocol scheme and the target host strictly. Accepting arbitrary URLs for internal streaming components is a common vector for SSRF and accessing internal services or unapproved domains.
+**Prevention:** Enforce strict URL scheme validation (only `ws`/`wss`) and use a whitelist of trusted domains (e.g., `*.nseindia.com`, `*.mcxindia.com`) for all externally provided connection URLs. Always parse the URL safely to extract and check the host and scheme before making requests.
 ## 2024-05-25 - [SSRF in MarketStream]
 **Vulnerability:** The `MarketStream::new` constructor in `src/streaming.rs` accepted any URL directly without validating its scheme or host. This allowed Server-Side Request Forgery (SSRF) where an attacker could stream internal endpoints or unauthorized hosts via the WebSocket client.
 **Learning:** Directly passing user-supplied URLs to network clients (`tokio_tungstenite::connect_async`) without filtering allowed schemes and domains opens up SSRF vectors, even in WebSocket clients.
@@ -14,3 +76,79 @@
 **Vulnerability:** The `reqwest::ClientBuilder` in `src/common.rs` used the default redirect policy which follows up to 10 redirects blindly to any host.
 **Learning:** Even if the initial request URL is validated and points to a trusted domain, an open redirect on that trusted domain could redirect the client to an untrusted or internal network address, leading to SSRF.
 **Prevention:** Always configure a custom `reqwest::redirect::Policy` when building a client to explicitly validate the redirect target URL host against a whitelist of trusted domains (e.g., `nseindia.com`, `mcxindia.com`).
+## 2026-05-10 - [SSRF via Open Redirects in Custom HTTP Clients]
+**Vulnerability:** The HTTP client configured in `build_client` used the default `reqwest` redirect policy, which blindly follows redirects to any domain up to a maximum count. This allowed for potential Server-Side Request Forgery (SSRF) if an initially trusted endpoint returned an open redirect to an attacker-controlled or internal network address.
+**Learning:** Default HTTP client configurations often prioritize connectivity over security. Even when the initial request target is validated and trusted, subsequent redirects are not automatically subjected to the same validation logic unless explicitly configured.
+**Prevention:** Always implement a custom redirect policy (e.g., `reqwest::redirect::Policy::custom`) that explicitly validates the redirect target URL against an allowlist of trusted domains, while also manually re-implementing infinite loop protections (like a redirect count limit) since the custom policy overrides default loop protections.
+## 2024-05-26 - SSRF via Open Redirect in HTTP Client
+**Vulnerability:** The HTTP client created by `reqwest::ClientBuilder` used the default redirect policy, which follows redirects to any host. This exposed the library to Server-Side Request Forgery (SSRF) via open redirects, where an initially trusted domain (like `nseindia.com`) could redirect the client to an internal or malicious external endpoint.
+**Learning:** Even when HTTP clients are initialized with URLs pointing to trusted domains, open redirects on those trusted domains can be exploited if the client implicitly follows redirects to any destination. `reqwest::Client` follows redirects by default.
+**Prevention:** Always implement an explicit, custom `reqwest::redirect::Policy` that validates redirect targets against a strict whitelist of trusted domains and limits the maximum number of redirects.
+## 2024-05-26 - [SSRF via Open Redirects in Client]
+**Vulnerability:** The `reqwest::ClientBuilder` used a default redirect policy, which follows all redirects automatically up to a certain limit. Since the user can supply domains on trusted subdomains that may be susceptible to open redirects (e.g. `trusted.com/redirect?url=http://attacker.com`), this could allow Server-Side Request Forgery (SSRF) bypassing the initial URL validation.
+**Learning:** Initial validation of URLs is insufficient if the HTTP client automatically follows redirects to untrusted destinations. An open redirect vulnerability on the initial trusted domain can be weaponized into an SSRF vulnerability against internal network services.
+**Prevention:** Always implement a custom `reqwest::redirect::Policy` that enforces strict domain whitelisting *during* redirect resolution. Explicitly limit the total number of allowed redirects (e.g., `attempt.previous().len() > 10`) to prevent infinite redirect loops within the custom policy.
+## 2024-05-26 - [SSRF via Open Redirects in reqwest::Client]
+**Vulnerability:** In `src/common.rs`, the default configuration for `reqwest::Client` follows redirects. If an initially trusted endpoint (like `nseindia.com`) returns a 301/302 to an attacker-controlled or internal endpoint, the client follows it.
+**Learning:** By default, HTTP clients like `reqwest::Client` follow redirects. An attacker can use an Open Redirect vulnerability on an otherwise trusted domain to bypass initial SSRF checks and cause the application to make requests to internal services or untrusted third-party sites.
+**Prevention:** Always define a custom redirect policy (`reqwest::redirect::Policy::custom`) when SSRF is a concern. The policy must strictly allowlist trusted domains, enforce allowed schemes, and limit the maximum number of redirects to prevent infinite loops.
+## 2026-05-06 - [Fix SSRF via Open Redirect in HTTP Client]
+**Vulnerability:** The HTTP client configured in `src/common.rs` via `reqwest::ClientBuilder::new().build()` implicitly followed redirects to any domain by default. This allowed a Server-Side Request Forgery (SSRF) vulnerability if an attacker could control an initially trusted domain that then redirected to an arbitrary internal or external host.
+**Learning:** By default, `reqwest::Client` follows redirects across any domains. When making outbound requests on behalf of a user, this open redirect behavior bypasses initial URL validations, potentially exposing internal services or causing the server to participate in malicious attacks.
+**Prevention:** Always configure a custom `reqwest::redirect::Policy` that explicitly validates and restricts redirect target hosts to a specific whitelist (e.g., `*.nseindia.com`, `*.mcxindia.com`). Additionally, always enforce a maximum redirect depth manually in the custom policy to prevent infinite redirect loops.
+## 2024-05-25 - [Fix SSRF vulnerability via open redirects]
+**Vulnerability:** The HTTP client configuration in `src/common.rs` (`build_client`) lacked a custom redirect policy. This meant `reqwest` would blindly follow redirects by default, potentially allowing Server-Side Request Forgery (SSRF) if a trusted domain performed an open redirect to an unauthorized or internal domain.
+**Learning:** Even if the initial URL scheme and host are validated (e.g. `nseindia.com`), an attacker might exploit an open redirect on the trusted domain to access arbitrary endpoints.
+**Prevention:** Always implement a strict custom redirect policy (`reqwest::redirect::Policy::custom`) that verifies the host of every redirect target against a whitelist of trusted domains, and enforces a maximum redirect count to prevent infinite loops.
+## 2024-05-26 - [DoS in WebSocket streaming via panic]
+**Vulnerability:** The `MarketStream.listen` callback processing loop in `src/streaming.rs` contained `.expect("&str into Python must not fail")` when converting incoming messages (JSON strings) to Python objects.
+**Learning:** Hardcoded unwraps or expects in continuous message processing loops create a Denial of Service (DoS) vulnerability. If a malicious or malformed message triggers the panic, the entire Rust thread dies, abruptly terminating the WebSocket connection and potentially taking down the host process.
+**Prevention:** Always propagate errors gracefully in Rust using the `?` operator or `.map_err()` to convert them into Python exceptions (`PyErr`), rather than panicking on unexpected input.
+## 2024-05-26 - [SSRF via Open Redirects in reqwest Client]
+**Vulnerability:** The `build_client` function in `src/common.rs` used the default `reqwest::Client` behavior, which follows redirects to any domain. If an initially trusted domain like `nseindia.com` had an open redirect vulnerability, it could lead to Server-Side Request Forgery (SSRF).
+**Learning:** The default redirect behavior of HTTP clients like `reqwest` is unsafe because it blindly follows redirects, potentially bypassing initial URL/domain validations.
+**Prevention:** Always explicitly configure a custom `reqwest::redirect::Policy` to enforce an allowed redirect domain whitelist and manually restrict the number of redirect attempts to prevent infinite loops.
+## 2024-05-25 - SSRF via Open Redirects
+**Vulnerability:** By default, `reqwest::Client` follows HTTP redirects indiscriminately. Since the library fetches data from potentially attacker-controlled inputs (or if the trusted domain is compromised/has an open redirect), the client could be coerced into making requests to unauthorized internal or external services, bypassing the initial domain check.
+**Learning:** Initial URL validation is insufficient if the HTTP client can be subsequently redirected to an untrusted domain.
+**Prevention:** Always configure a custom redirect policy (`reqwest::redirect::Policy::custom`) that enforces the same domain whitelist rules as the initial request to prevent SSRF via open redirects.
+## 2025-05-01 - Prevent SSRF via Open Redirects in HTTP Client
+
+**Vulnerability:** The centralized HTTP client built via `reqwest::ClientBuilder::new()` in `src/common.rs` uses the default redirect policy, which follows up to 10 redirects to any domain. An open redirect vulnerability on initially trusted domains (e.g. `nseindia.com` or `mcxindia.com`) could be leveraged to cause the library to make requests to internal services or malicious domains, potentially leading to Server-Side Request Forgery (SSRF).
+
+**Learning:** When building a client meant to only communicate with specific third-party APIs (like NSE or MCX), relying on default redirect behaviors introduces an unnecessary risk if those APIs have open redirect flaws.
+
+**Prevention:** Explicitly configure a custom `reqwest::redirect::Policy` that enforces a whitelist of trusted domains (and their subdomains) and manually limits the maximum number of redirects.
+## 2026-04-29 - SSRF in HTTP Client Redirects
+**Vulnerability:** The `build_client` function in `src/common.rs` created a `reqwest::Client` that followed redirects by default without validating the redirect destination. This allowed an attacker to redirect a trusted request to an untrusted or internal network destination.
+**Learning:** Default redirect behavior in HTTP clients can bypass initial URL validations, creating an SSRF vector if the target domain changes via an open redirect.
+**Prevention:** Always implement a custom redirect policy (`reqwest::redirect::Policy`) that enforces an allowlist of trusted domains and limits the number of redirects when following them.
+## 2024-05-26 - [Fix SSRF via open redirects in HTTP client]
+**Vulnerability:** By default, `reqwest::Client` follows redirects implicitly to any domain, allowing an attacker to exploit open redirect vulnerabilities on a trusted site to forward the client to a malicious server.
+**Learning:** Even if the initial request URL is hardcoded or validated to point to a trusted domain, following unvalidated redirects opens up Server-Side Request Forgery (SSRF) vulnerabilities. Custom redirect policies overwrite the default redirect counter, so it must be reimplemented manually to prevent infinite loops.
+**Prevention:** Always implement a custom `reqwest::redirect::Policy` that limits the number of redirects, enforces secure schemes (HTTPS), and strictly whitelists expected target domains.
+
+## 2024-04-26 - SSRF Protection on Reqwest Clients
+**Vulnerability:** Default `reqwest::Client` configuration follows redirects unconditionally. This can lead to Server-Side Request Forgery (SSRF) if a trusted domain issues an open redirect to a malicious internal or external endpoint.
+**Learning:** Initial validation of URLs is insufficient if redirects are automatically followed without re-validation.
+**Prevention:** Always use `reqwest::redirect::Policy::custom` to enforce domain whitelists and limit redirect depth when instantiating `reqwest::Client`.
+## 2024-05-26 - [SSRF via Open Redirect in HTTP Client]
+**Vulnerability:** The HTTP client configured in `src/common.rs` used the default `reqwest` redirect policy, which blindly follows redirects to any host up to 10 times. An attacker controlling an initially trusted endpoint could redirect the client to an internal IP or restricted domain, causing Server-Side Request Forgery (SSRF).
+**Learning:** Default redirect behavior in HTTP clients is often unsafe in environments that process data from external endpoints, as open redirects on those external endpoints can bypass initial URL validation.
+**Prevention:** Always configure an explicit, custom redirect policy (e.g. `reqwest::redirect::Policy::custom`) that enforces a strict whitelist of trusted target hosts (like `*.nseindia.com`) and bounds the maximum number of redirects.
+## 2025-02-15 - SSRF via Open Redirects in Client Builder
+**Vulnerability:** The HTTP client configured in `src/common.rs` (`build_client`) did not set a custom redirect policy. Because `reqwest::Client` follows redirects to any domain by default, it was vulnerable to Server-Side Request Forgery (SSRF) if a trusted domain issued a malicious open redirect.
+**Learning:** Even if initial requests are strictly validated against a trusted whitelist (e.g., `nseindia.com`, `mcxindia.com`), an open redirect on these trusted hosts can route the request to a malicious internal or external server.
+**Prevention:** Always define an explicit custom redirect policy (`reqwest::redirect::Policy`) that enforces both a maximum redirect count and explicitly validates that the target URL's domain remains within the trusted whitelist, ensuring open redirects cannot bypass domain filtering.
+## 2024-05-26 - [SSRF via Open Redirect]
+**Vulnerability:** The HTTP client created in `src/common.rs` via `reqwest::ClientBuilder` did not restrict the domains it would follow during redirects. This allowed SSRF via open redirects, where an initially trusted domain could redirect the client to an untrusted or internal host.
+**Learning:** Even if the initial request is made to a trusted domain, open redirects on that domain can be exploited to bypass domain whitelists and perform SSRF if the HTTP client automatically follows redirects to any host.
+**Prevention:** Always configure a custom `reqwest::redirect::Policy` that enforces a strict whitelist of trusted target hosts (and prevents infinite redirect loops) to prevent open redirects from bypassing initial validation.
+## 2024-05-26 - [Open Redirect in HTTP Client]
+**Vulnerability:** The HTTP client (`reqwest::Client`) in `src/common.rs` followed HTTP redirects by default without validating the target URL's host. This allowed Server-Side Request Forgery (SSRF) and open redirects, where an initially trusted server could redirect the client to an internal IP address or an untrusted domain.
+**Learning:** Default behavior of HTTP clients often includes following redirects unconditionally. Relying solely on validating the initial URL is insufficient if redirects can point anywhere. Furthermore, when defining a custom `reqwest::redirect::Policy`, the default redirect counter is entirely overwritten, so you must manually limit redirects.
+**Prevention:** Always configure an explicit redirect policy for HTTP clients that validates the redirect target host against an allowlist and enforces a maximum redirect limit.
+## 2026-04-22 - [SSRF via Open Redirect in reqwest HTTP Client]
+**Vulnerability:** The `reqwest::Client` built in `src/common.rs` was configured with its default behavior, which follows redirects automatically to any domain.
+**Learning:** Even if the initial URL is hardcoded or strictly validated to be a trusted domain (like `nseindia.com`), an attacker could potentially control the response (e.g., via user-controlled data or a compromised subdomain) to issue an HTTP 301/302 redirect. Because the HTTP client followed redirects without restriction, it could be forced to fetch data from internal IPs or unapproved domains, bypassing initial SSRF protections.
+**Prevention:** Always explicitly configure a custom `reqwest::redirect::Policy` that enforces the same domain whitelist restrictions on redirected URLs as the initial requests.
