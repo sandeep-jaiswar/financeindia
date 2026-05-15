@@ -101,6 +101,35 @@ impl BhavArchive {
                             (date_clone, res)
                         });
                     }
+                    }
+                    let file = File::create(path).map_err(FinanceError::Io)?;
+                    let mut zip = zip::ZipWriter::new(file);
+                    // 0o644 — readable data files, not executable.
+                    let options: FileOptions<'_, ()> = FileOptions::default()
+                        .compression_method(zip::CompressionMethod::Stored)
+                        .unix_permissions(0o644);
+
+                    // Limit concurrent NSE downloads to avoid rate-limiting.
+                    let semaphore = Arc::new(Semaphore::new(5));
+                    let mut set: JoinSet<(String, crate::error::FinanceResult<bytes::Bytes>)> =
+                        JoinSet::new();
+                    let client = self.client.clone();
+
+                    for date in dates {
+                        let sem_clone = semaphore.clone();
+                        let client_clone = client.clone();
+                        let date_clone = date.clone();
+                        set.spawn(async move {
+                            let _permit = sem_clone
+                                .acquire()
+                                .await
+                                .expect("BhavArchive semaphore should never close");
+                            let res =
+                                crate::equities::bhav_copy_equities(&client_clone, &date_clone)
+                                    .await;
+                            (date_clone, res)
+                        });
+                    }
 
                     let mut success_count = 0;
                     let mut failed_dates = Vec::new();

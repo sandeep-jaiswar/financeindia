@@ -51,6 +51,11 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         headers.extend(extra);
     }
 
+    let policy = Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
+            return attempt.error("too many redirects");
+        }
+        let host = attempt.url().host_str().unwrap_or("");
     // Security enhancement: Restrict reqwest redirect policy to prevent SSRF and open redirect attacks.
     let policy = reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() > 10 {
@@ -173,6 +178,8 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         {
             attempt.follow()
         } else {
+            attempt.error("untrusted redirect domain")
+        }
             attempt.stop()
         }
     let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
