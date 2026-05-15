@@ -70,3 +70,16 @@ def test_missing_data_exception(client):
     # or a ConnectionError if the API returns a non-200 status.
     with pytest.raises(ValueError):
         client.get_equity_quote("INVALID_TICKER_9999")
+
+def test_market_stream_ssrf_protection():
+    # Valid URLs
+    financeindia.MarketStream("wss://stream.nseindia.com/market")
+    financeindia.MarketStream("ws://mcxindia.com/stream")
+
+    # Invalid scheme
+    with pytest.raises(ValueError, match="Only ws and wss URLs are allowed"):
+        financeindia.MarketStream("https://stream.nseindia.com/market")
+
+    # Invalid host
+    with pytest.raises(ValueError, match="URL host must be a trusted NSE or MCX domain"):
+        financeindia.MarketStream("wss://evil.com/stream")
