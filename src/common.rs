@@ -51,6 +51,7 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         headers.extend(extra);
     }
 
+    // Security enhancement: Restrict reqwest redirect policy to prevent SSRF and open redirect attacks.
     let policy = reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() > 10 {
             attempt.error("too many redirects")
@@ -90,6 +91,18 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         if attempt.previous().len() > 10 {
             return attempt.error("too many redirects");
         }
+
+        if let Some(host) = attempt.url().host_str() {
+            if host.ends_with(".nseindia.com")
+                || host == "nseindia.com"
+                || host.ends_with(".mcxindia.com")
+                || host == "mcxindia.com"
+            {
+                return attempt.follow();
+            }
+        }
+
+        attempt.error("untrusted redirect target")
         let url = attempt.url();
         if url.scheme() != "https" {
             return attempt.error("invalid redirect scheme: only https is allowed");
@@ -256,7 +269,11 @@ pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
 ///
 /// The `ACCEPT: */*` header is already set on every client via `build_client`; no
 /// per-request duplicate is emitted. A `Referer` header is added when provided.
-pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> FinanceResult<Bytes> {
+pub async fn fetch_bytes(
+    client: &Client,
+    url: &str,
+    referer: Option<&str>,
+) -> FinanceResult<Bytes> {
     let mut last_error = String::new();
     let mut delay = Duration::from_millis(500);
 
@@ -274,7 +291,8 @@ pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> F
                         if len > MAX_RESPONSE_SIZE as u64 {
                             return Err(FinanceError::Runtime(format!(
                                 "Response from {} exceeded {} MB limit",
-                                url, MAX_RESPONSE_SIZE / (1024 * 1024)
+                                url,
+                                MAX_RESPONSE_SIZE / (1024 * 1024)
                             )));
                         }
                         accumulated_size = len as usize;
@@ -299,13 +317,17 @@ pub async fn fetch_bytes(client: &Client, url: &str, referer: Option<&str>) -> F
                         let mut stream = checked.bytes_stream();
                         while let Some(chunk_res) = stream.next().await {
                             let chunk = chunk_res.map_err(|e: reqwest::Error| {
-                                FinanceError::Runtime(format!("Chunk stream error from {}: {}", url, e))
+                                FinanceError::Runtime(format!(
+                                    "Chunk stream error from {}: {}",
+                                    url, e
+                                ))
                             })?;
                             accumulated_size += chunk.len();
                             if accumulated_size > MAX_RESPONSE_SIZE {
                                 return Err(FinanceError::Runtime(format!(
                                     "Response from {} exceeded {} MB limit",
-                                    url, MAX_RESPONSE_SIZE / (1024 * 1024)
+                                    url,
+                                    MAX_RESPONSE_SIZE / (1024 * 1024)
                                 )));
                             }
                             buf.extend_from_slice(&chunk);
@@ -362,8 +384,7 @@ pub fn parse_csv_to_py(py: Python<'_>, csv_bytes: &[u8]) -> PyResult<PyObject> {
         .map_err(|e| PyErr::from(FinanceError::Csv(e)))?
         .clone();
 
-    let mut columns: Vec<pyo3::Bound<'_, pyo3::types::PyList>> =
-        Vec::with_capacity(headers.len());
+    let mut columns: Vec<pyo3::Bound<'_, pyo3::types::PyList>> = Vec::with_capacity(headers.len());
     for _ in 0..headers.len() {
         columns.push(pyo3::types::PyList::empty(py));
     }
@@ -398,18 +419,20 @@ pub fn read_first_text_file_from_zip(bytes: Bytes) -> FinanceResult<Bytes> {
         let mut file = archive.by_index(i)?;
         if !file.is_dir() {
             let mut buf = Vec::new();
-            (&mut file).take(MAX_DECOMPRESSED_ENTRY_SIZE).read_to_end(&mut buf)?;
+            (&mut file)
+                .take(MAX_DECOMPRESSED_ENTRY_SIZE)
+                .read_to_end(&mut buf)?;
             if buf.len() as u64 >= MAX_DECOMPRESSED_ENTRY_SIZE {
-                 // Double check if we actually reached the limit.
-                 // take() doesn't error when reaching the limit, it just stops.
-                 // We can check if there's more data.
-                 let mut probe = [0u8; 1];
-                 if file.read(&mut probe).unwrap_or(0) > 0 {
-                     return Err(FinanceError::Runtime(format!(
-                         "Decompressed ZIP entry exceeded {} MB limit",
-                         MAX_DECOMPRESSED_ENTRY_SIZE / (1024 * 1024)
-                     )));
-                 }
+                // Double check if we actually reached the limit.
+                // take() doesn't error when reaching the limit, it just stops.
+                // We can check if there's more data.
+                let mut probe = [0u8; 1];
+                if file.read(&mut probe).unwrap_or(0) > 0 {
+                    return Err(FinanceError::Runtime(format!(
+                        "Decompressed ZIP entry exceeded {} MB limit",
+                        MAX_DECOMPRESSED_ENTRY_SIZE / (1024 * 1024)
+                    )));
+                }
             }
             return Ok(Bytes::from(buf));
         }
