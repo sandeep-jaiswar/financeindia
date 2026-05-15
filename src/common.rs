@@ -4,7 +4,9 @@ use chrono::NaiveDate;
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use reqwest::Client;
+use reqwest::redirect::Policy;
 use reqwest::header::REFERER;
+use reqwest::redirect::Policy;
 use serde::{self, Deserialize};
 use std::io::Read;
 use std::time::Duration;
@@ -53,6 +55,88 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         if attempt.previous().len() > 10 {
             return attempt.error("too many redirects");
         }
+
+        if let Some(host) = attempt.url().host_str() {
+            if host == "nseindia.com" || host.ends_with(".nseindia.com") || host == "mcxindia.com" || host.ends_with(".mcxindia.com") {
+                attempt.follow()
+            } else {
+                attempt.error("untrusted redirect domain")
+            }
+        } else {
+             attempt.error("no host in redirect")
+        }
+    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
+            return attempt.error("too many redirects");
+        }
+        let url = attempt.url();
+        if url.scheme() != "https" {
+            return attempt.error("invalid redirect scheme: only https is allowed");
+        }
+        if let Some(host) = url.host_str() {
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
+            attempt.error("too many redirects")
+        } else {
+            if let Some(host) = attempt.url().host_str() {
+                if host == "nseindia.com"
+                    || host.ends_with(".nseindia.com")
+                    || host == "mcxindia.com"
+                    || host.ends_with(".mcxindia.com")
+                {
+                    attempt.follow()
+                } else {
+                    attempt.error("Untrusted redirect host to prevent SSRF")
+                }
+            } else {
+                attempt.error("Redirect missing host")
+            }
+        }
+            return attempt.error("too many redirects");
+        }
+        if let Some(host) = attempt.url().host_str() {
+            if !(host == "nseindia.com"
+                || host.ends_with(".nseindia.com")
+                || host == "mcxindia.com"
+                || host.ends_with(".mcxindia.com"))
+            {
+                return attempt.error("redirect to untrusted domain");
+            }
+        } else {
+            return attempt.error("redirect with no host");
+        }
+        attempt.follow()
+
+    let custom_policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
+            return attempt.error("too many redirects");
+        }
+        let url = attempt.url();
+        if let Some(host) = url.host_str() {
+    let redirect_policy = Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
+            return attempt.error("too many redirects");
+        }
+        let host = attempt.url().host_str().unwrap_or("");
+        let is_allowed = host == "nseindia.com"
+            || host.ends_with(".nseindia.com")
+            || host == "mcxindia.com"
+            || host.ends_with(".mcxindia.com");
+
+        if !is_allowed {
+            return attempt.error("redirect to untrusted domain");
+        }
+        attempt.follow()
+        if host == "nseindia.com"
+            || host.ends_with(".nseindia.com")
+            || host == "mcxindia.com"
+            || host.ends_with(".mcxindia.com")
+        {
+            attempt.follow()
+        } else {
+            attempt.stop()
+        }
+    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
         if let Some(host) = attempt.url().host_str() {
             if host == "nseindia.com"
                 || host.ends_with(".nseindia.com")
@@ -63,6 +147,19 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
             }
         }
         attempt.error("redirect to untrusted domain")
+        attempt.error("untrusted redirect domain")
+                attempt.follow()
+            } else {
+                attempt.error("redirect to untrusted domain")
+            }
+        } else {
+            attempt.error("redirect to url without host")
+        }
+                return attempt.follow();
+            }
+        }
+        attempt.error("redirect to untrusted domain")
+        attempt.stop()
     });
 
     Ok(reqwest::ClientBuilder::new()
@@ -70,6 +167,9 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         .cookie_store(true)
         .timeout(DEFAULT_TIMEOUT)
         .redirect(custom_policy)
+        .redirect(policy)
+        .redirect(custom_policy)
+        .redirect(redirect_policy)
         .build()?)
 }
 
@@ -85,7 +185,7 @@ pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
     ];
 
     // Normalise slashes to hyphens, then try each known format.
-    let clean = date.replace('/', "-");
+    let clean = date.replace('/', "-").replace('\\', "-");
     for fmt in formats {
         if let Ok(d) = NaiveDate::parse_from_str(&clean, fmt) {
             return Ok(d);
@@ -324,6 +424,14 @@ mod tests {
     fn test_parse_date_slash_separator() {
         // Slashes should be normalised to hyphens before parsing.
         assert!(parse_date_robust("15/05/2023").is_ok());
+    }
+
+    #[test]
+    fn test_parse_date_backslash_separator() {
+        // Backslashes should be normalised to hyphens before parsing, matching slash behavior.
+        let result = parse_date_robust("15\\05\\2023");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().to_string(), "2023-05-15");
     }
 }
 
