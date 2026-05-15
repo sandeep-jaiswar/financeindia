@@ -20,7 +20,100 @@ impl MarketStream {
 
         let scheme = parsed_url.scheme();
         if scheme != "ws" && scheme != "wss" {
+            return Err(FinanceError::Runtime("Only ws and wss schemes are allowed".to_string()).into());
+            return Err(PyErr::from(FinanceError::Runtime(
+                "Only ws and wss URL schemes are allowed".to_string(),
+            )));
+        }
+
+        let host = parsed_url
+            .host_str()
+            .ok_or_else(|| PyErr::from(FinanceError::Runtime("URL has no host".to_string())))?;
+            return Err(FinanceError::Runtime("Only ws and wss schemes are allowed".to_string()).into());
+        // SSRF protection: only allow ws/wss schemes
+        match parsed_url.scheme() {
+            "ws" | "wss" => {}
+            _ => return Err(PyErr::from(FinanceError::Runtime("Only ws and wss URLs are allowed".to_string()))),
+        }
+
+        // SSRF protection: validate trusted domains
+        let host = parsed_url.host_str().unwrap_or("");
+        if !host.ends_with(".nseindia.com") && host != "nseindia.com" &&
+           !host.ends_with(".mcxindia.com") && host != "mcxindia.com" {
+            return Err(PyErr::from(FinanceError::Runtime("URL host must be a trusted domain (nseindia.com or mcxindia.com)".to_string())));
+        let parsed = url::Url::parse(&url).map_err(FinanceError::UrlParse).map_err(PyErr::from)?;
+
+        let scheme = parsed.scheme();
+        if scheme != "ws" && scheme != "wss" {
             return Err(pyo3::exceptions::PyValueError::new_err(
+                "Invalid URL scheme. Only 'ws' and 'wss' are allowed for streaming.",
+            ));
+        }
+
+        if let Some(host) = parsed.host_str() {
+            let host_lower = host.to_lowercase();
+            if !(host_lower == "nseindia.com"
+                || host_lower.ends_with(".nseindia.com")
+                || host_lower == "mcxindia.com"
+                || host_lower.ends_with(".mcxindia.com"))
+            {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Untrusted host. Streaming is only allowed from nseindia.com or mcxindia.com domains.",
+        let parsed_url = url::Url::parse(&url)
+            .map_err(FinanceError::UrlParse)
+            .map_err(PyErr::from)?;
+        let parsed_url = url::Url::parse(&url).map_err(FinanceError::UrlParse).map_err(PyErr::from)?;
+
+        let scheme = parsed_url.scheme();
+        if scheme != "ws" && scheme != "wss" {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "Only ws and wss schemes are allowed".to_string(),
+                "Only ws and wss schemes are allowed".to_string()
+            )));
+        }
+
+        let host = parsed_url.host_str().ok_or_else(|| {
+            PyErr::from(FinanceError::Runtime("URL has no host".to_string()))
+        })?;
+
+        if !host.ends_with(".nseindia.com") && host != "nseindia.com" && !host.ends_with(".mcxindia.com") && host != "mcxindia.com" {
+            return Err(FinanceError::Runtime("URL host must be a trusted domain".to_string()).into());
+            return Err(PyErr::from(FinanceError::Runtime(
+                "URL host must be a trusted domain".to_string(),
+            )));
+        let is_trusted = host == "nseindia.com" || host.ends_with(".nseindia.com")
+            || host == "mcxindia.com" || host.ends_with(".mcxindia.com");
+
+        if !is_trusted {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "URL host must be a trusted domain (nseindia.com, mcxindia.com)".to_string()
+            )));
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Only ws and wss URLs are allowed",
+            ));
+        }
+
+        let host = parsed_url
+            .host_str()
+            .ok_or_else(|| FinanceError::Runtime("URL has no host".to_string()))
+            .map_err(PyErr::from)?;
+
+        let allowed = host == "nseindia.com"
+            || host.ends_with(".nseindia.com")
+            || host == "mcxindia.com"
+            || host.ends_with(".mcxindia.com");
+
+        if !allowed {
+            return Err(FinanceError::Runtime("URL host must be a trusted NSE/MCX domain".to_string()).into());
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("URL has no host"))?;
+
+        if !host.ends_with(".nseindia.com")
+            && host != "nseindia.com"
+            && !host.ends_with(".mcxindia.com")
+            && host != "mcxindia.com"
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "URL host must be a trusted NSE or MCX domain",
                 "Invalid URL scheme: only ws and wss are allowed.",
             ));
         }
@@ -37,6 +130,7 @@ impl MarketStream {
             }
         } else {
             return Err(pyo3::exceptions::PyValueError::new_err(
+                "Invalid URL. No host found.",
                 "Invalid URL: missing host.",
             ));
         }
@@ -85,12 +179,17 @@ impl MarketStream {
                                     serde_json::from_str::<serde_json::Value>(text)
                                 {
                                     crate::to_py_obj(py, val).unwrap_or_else(|_| {
+                    if msg.is_text() {
+                        let text = msg.to_text().unwrap_or_default();
+                        Python::with_gil(|py| {
+                            // Prefer a structured Python dict/list when the frame is JSON.
+                            let py_val =
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(text) {
+                                    crate::to_py_obj(py, val).or_else(|_| {
                                         pyo3::IntoPyObjectExt::into_py_any(text, py)
-                                            .expect("&str into Python must not fail")
-                                    })
+                                    })?
                                 } else {
-                                    pyo3::IntoPyObjectExt::into_py_any(text, py)
-                                        .expect("&str into Python must not fail")
+                                    pyo3::IntoPyObjectExt::into_py_any(text, py)?
                                 };
                                 callback.call1(py, (py_val,))
                             })
