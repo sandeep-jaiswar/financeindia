@@ -104,10 +104,35 @@ impl BhavArchive {
                         res.map_err(|e| FinanceError::Runtime(e.to_string()))?;
                     match result {
                         Ok(data) => {
+                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
+                            let sanitized_date = date.replace('/', "_").replace('\\', "_");
+                            // Use the sanitized date string for the filename
+                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
+                            // Sanitize the date string to prevent Zip Slip and path traversal
+                            let safe_date = date.replace('/', "_").replace('\\', "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
                             // Use the raw date string as given by the caller for the filename,
                             // so the archive reflects what the caller requested.
+                            // Ensure the date string does not contain path separators to prevent path traversal
                             let sanitized_date = date.replace('/', "_").replace('\\', "_");
                             zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
+                            // Sanitize the date string to prevent Zip Slip and path traversal vulnerabilities.
+                            let safe_date = date.replace('/', "_").replace('\\', "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
+                            // Sanitize user input to prevent path traversal vulnerabilities.
+                            let sanitized_date = date.replace("/", "_").replace("\\", "_");
+                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
+                            // Sanitize the date string to prevent path traversal (Zip Slip)
+                            let safe_date = date.replace("/", "_").replace("\\", "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
+                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
+                            let safe_date = date.replace('/', "_").replace('\\', "_");
+                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
+                            // Sanitize the date to prevent zip slip / path traversal inside the zip archive.
+                            let clean_date = sanitize_date_for_archive(&date);
+
+                            // Use the cleaned date string for the filename.
+                            zip.start_file(format!("bhav_{}.csv", clean_date), options)
                                 .map_err(|e| FinanceError::Runtime(e.to_string()))?;
                             zip.write_all(&data).map_err(FinanceError::Io)?;
                             success_count += 1;
@@ -132,5 +157,36 @@ impl BhavArchive {
             })
             .map_err(PyErr::from)
         })
+    }
+}
+
+/// Sanitize a date string for use in ZIP entry filenames.
+/// Replaces path separators ('/' and '\\') with underscores to prevent zip slip.
+fn sanitize_date_for_archive(date: &str) -> String {
+    date.replace('/', "_").replace('\\', "_")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_date_for_archive_forward_slash() {
+        assert_eq!(sanitize_date_for_archive("2023/01/01"), "2023_01_01");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_backslash() {
+        assert_eq!(sanitize_date_for_archive("2023\\02\\01"), "2023_02_01");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_mixed() {
+        assert_eq!(sanitize_date_for_archive("2023/01\\02"), "2023_01_02");
+    }
+
+    #[test]
+    fn test_sanitize_date_for_archive_no_separators() {
+        assert_eq!(sanitize_date_for_archive("2023-01-01"), "2023-01-01");
     }
 }
