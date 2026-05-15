@@ -72,6 +72,13 @@
 **Vulnerability:** The `MarketStream::new` constructor in `src/streaming.rs` accepted any URL directly without validating its scheme or host. This allowed Server-Side Request Forgery (SSRF) where an attacker could stream internal endpoints or unauthorized hosts via the WebSocket client.
 **Learning:** Directly passing user-supplied URLs to network clients (`tokio_tungstenite::connect_async`) without filtering allowed schemes and domains opens up SSRF vectors, even in WebSocket clients.
 **Prevention:** Always validate URL schemes and implement an explicit whitelist of trusted domains for outgoing network connections.
+## 2025-05-01 - Prevent SSRF via Open Redirects in HTTP Client
+
+**Vulnerability:** The centralized HTTP client built via `reqwest::ClientBuilder::new()` in `src/common.rs` uses the default redirect policy, which follows up to 10 redirects to any domain. An open redirect vulnerability on initially trusted domains (e.g. `nseindia.com` or `mcxindia.com`) could be leveraged to cause the library to make requests to internal services or malicious domains, potentially leading to Server-Side Request Forgery (SSRF).
+
+**Learning:** When building a client meant to only communicate with specific third-party APIs (like NSE or MCX), relying on default redirect behaviors introduces an unnecessary risk if those APIs have open redirect flaws.
+
+**Prevention:** Explicitly configure a custom `reqwest::redirect::Policy` that enforces a whitelist of trusted domains (and their subdomains) and manually limits the maximum number of redirects.
 ## 2026-04-29 - SSRF in HTTP Client Redirects
 **Vulnerability:** The `build_client` function in `src/common.rs` created a `reqwest::Client` that followed redirects by default without validating the redirect destination. This allowed an attacker to redirect a trusted request to an untrusted or internal network destination.
 **Learning:** Default redirect behavior in HTTP clients can bypass initial URL validations, creating an SSRF vector if the target domain changes via an open redirect.
