@@ -16,6 +16,9 @@ impl MarketStream {
     pub fn new(url: String) -> PyResult<Self> {
         let parsed_url = url::Url::parse(&url).map_err(FinanceError::UrlParse).map_err(PyErr::from)?;
 
+        let scheme = parsed_url.scheme();
+        if scheme != "ws" && scheme != "wss" {
+            return Err(FinanceError::Runtime("Only ws and wss schemes are allowed".to_string()).into());
         // SSRF protection: only allow ws/wss schemes
         match parsed_url.scheme() {
             "ws" | "wss" => {}
@@ -80,6 +83,16 @@ impl MarketStream {
 
         let host = parsed_url
             .host_str()
+            .ok_or_else(|| FinanceError::Runtime("URL has no host".to_string()))
+            .map_err(PyErr::from)?;
+
+        let allowed = host == "nseindia.com"
+            || host.ends_with(".nseindia.com")
+            || host == "mcxindia.com"
+            || host.ends_with(".mcxindia.com");
+
+        if !allowed {
+            return Err(FinanceError::Runtime("URL host must be a trusted NSE/MCX domain".to_string()).into());
             .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("URL has no host"))?;
 
         if !host.ends_with(".nseindia.com")
