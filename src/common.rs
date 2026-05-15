@@ -55,6 +55,8 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         if attempt.previous().len() > 10 {
             return attempt.error("too many redirects");
         }
+        let target = attempt.url();
+        if let Some(host) = target.host_str() {
 
         if let Some(host) = attempt.url().host_str() {
             if host == "nseindia.com" || host.ends_with(".nseindia.com") || host == "mcxindia.com" || host.ends_with(".mcxindia.com") {
@@ -153,6 +155,8 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
                 attempt.error("redirect to untrusted domain")
             }
         } else {
+            attempt.error("invalid redirect url")
+        }
             attempt.error("redirect to url without host")
         }
                 return attempt.follow();
