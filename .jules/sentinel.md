@@ -1,3 +1,7 @@
+## 2024-05-20 - Path Traversal in BhavArchive
+**Vulnerability:** The `BhavArchive.archive_equities` function accepted raw user input for `output_path` and passed it directly to `File::create(path)` without any validation.
+**Learning:** This allowed arbitrary file writes anywhere on the system (e.g. `../../etc/passwd` or `/absolute/path.zip`) by exploiting path traversal. The issue existed because the PyO3 wrapper lacked an explicit input sanitization layer before interacting with the host filesystem.
+**Prevention:** Validate all file paths received from Python boundaries in Rust before usage. Reject paths containing directory traversal sequences (`..`) or absolute path indicators (`/`, `\`, `:`).
 ## 2024-05-24 - [Fix path traversal in zip filename]
 **Vulnerability:** Path Traversal / Zip Slip. In `src/archive.rs`, user-supplied dates were directly formatted into zip filenames, which would allow a malicious user to supply path traversal characters (`/` or `\`) in the date string and overwrite files outside the intended extraction directory.
 **Learning:** Directly interpolating user-controlled strings into file paths inside a zip archive without sanitization is a critical vulnerability vector.
@@ -7,3 +11,7 @@
 **Vulnerability:** Server-Side Request Forgery (SSRF) and scheme bypass in `MarketStream`. The WebSocket client accepted any URL and any host (including `http`/`https` instead of just `ws`/`wss`) to establish market data streams, exposing the application to SSRF attacks if external users can influence the connection URL.
 **Learning:** WebSocket streaming clients must validate both the protocol scheme and the target host strictly. Accepting arbitrary URLs for internal streaming components is a common vector for SSRF and accessing internal services or unapproved domains.
 **Prevention:** Enforce strict URL scheme validation (only `ws`/`wss`) and use a whitelist of trusted domains (e.g., `*.nseindia.com`, `*.mcxindia.com`) for all externally provided connection URLs. Always parse the URL safely to extract and check the host and scheme before making requests.
+## 2024-05-25 - [SSRF in MarketStream]
+**Vulnerability:** The `MarketStream::new` constructor in `src/streaming.rs` accepted any URL directly without validating its scheme or host. This allowed Server-Side Request Forgery (SSRF) where an attacker could stream internal endpoints or unauthorized hosts via the WebSocket client.
+**Learning:** Directly passing user-supplied URLs to network clients (`tokio_tungstenite::connect_async`) without filtering allowed schemes and domains opens up SSRF vectors, even in WebSocket clients.
+**Prevention:** Always validate URL schemes and implement an explicit whitelist of trusted domains for outgoing network connections.
