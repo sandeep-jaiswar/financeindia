@@ -14,6 +14,24 @@ pub struct MarketStream {
 impl MarketStream {
     #[new]
     pub fn new(url: String) -> PyResult<Self> {
+        let parsed = url::Url::parse(&url).map_err(FinanceError::UrlParse).map_err(PyErr::from)?;
+
+        let scheme = parsed.scheme();
+        if scheme != "ws" && scheme != "wss" {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Invalid URL scheme. Only 'ws' and 'wss' are allowed for streaming.",
+            ));
+        }
+
+        if let Some(host) = parsed.host_str() {
+            let host_lower = host.to_lowercase();
+            if !(host_lower == "nseindia.com"
+                || host_lower.ends_with(".nseindia.com")
+                || host_lower == "mcxindia.com"
+                || host_lower.ends_with(".mcxindia.com"))
+            {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Untrusted host. Streaming is only allowed from nseindia.com or mcxindia.com domains.",
         let parsed_url = url::Url::parse(&url)
             .map_err(FinanceError::UrlParse)
             .map_err(PyErr::from)?;
@@ -69,6 +87,7 @@ impl MarketStream {
             }
         } else {
             return Err(pyo3::exceptions::PyValueError::new_err(
+                "Invalid URL. No host found.",
                 "Invalid URL: missing host.",
             ));
         }

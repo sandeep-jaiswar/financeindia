@@ -7,6 +7,10 @@
 **Learning:** Directly interpolating user-controlled strings into file paths inside a zip archive without sanitization is a critical vulnerability vector.
 **Prevention:** Always sanitize input by replacing OS-specific directory separators ('/' and '\') with safe characters like '_' when using them to construct internal ZIP archive filenames.
 
+## 2025-04-16 - [Fix SSRF vulnerability in MarketStream]
+**Vulnerability:** Server-Side Request Forgery (SSRF) in `MarketStream::new` (`src/streaming.rs`) where the WebSocket URL passed by the caller wasn't validated, allowing connections to arbitrary servers or internal resources.
+**Learning:** Even when building a library for external API fetching, accepting raw user-supplied URLs for data streaming endpoints introduces significant risks if not strictly constrained to the expected external domains.
+**Prevention:** Implement strict URL parsing, scheme validation (e.g. `ws` or `wss`), and enforce a whitelist of trusted target domains (`nseindia.com`, `mcxindia.com`) to ensure that users cannot abuse the tool to scan or attack internal network services.
 ## 2025-05-24 - [Fix SSRF vulnerability in websocket client]
 **Vulnerability:** Server-Side Request Forgery (SSRF) in `MarketStream::new` (`src/streaming.rs`). The WebSocket client connected to any URL provided by the user without validating the scheme or host. This could be exploited by an attacker to make the server initiate WebSocket connections to internal services or unintended external endpoints.
 **Learning:** Network clients, even WebSockets, that accept arbitrary URLs must explicitly whitelist allowed schemes and hosts to prevent SSRF, particularly when they operate on behalf of a Python application running in potentially sensitive environments.
