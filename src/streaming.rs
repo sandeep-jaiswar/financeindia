@@ -18,6 +18,14 @@ impl MarketStream {
 
         let scheme = parsed_url.scheme();
         if scheme != "ws" && scheme != "wss" {
+            return Err(PyErr::from(FinanceError::Runtime(
+                "Only ws and wss URL schemes are allowed".to_string(),
+            )));
+        }
+
+        let host = parsed_url
+            .host_str()
+            .ok_or_else(|| PyErr::from(FinanceError::Runtime("URL has no host".to_string())))?;
             return Err(FinanceError::Runtime("Only ws and wss schemes are allowed".to_string()).into());
         // SSRF protection: only allow ws/wss schemes
         match parsed_url.scheme() {
