@@ -109,6 +109,9 @@ impl BhavArchive {
                             zip.start_file(format!("bhav_{}.csv", safe_date), options)
                             // Use the raw date string as given by the caller for the filename,
                             // so the archive reflects what the caller requested.
+                            // Ensure the date string does not contain path separators to prevent path traversal
+                            let sanitized_date = date.replace('/', "_").replace('\\', "_");
+                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
                             // Sanitize the date string to prevent Zip Slip and path traversal vulnerabilities.
                             let safe_date = date.replace('/', "_").replace('\\', "_");
                             zip.start_file(format!("bhav_{}.csv", safe_date), options)
