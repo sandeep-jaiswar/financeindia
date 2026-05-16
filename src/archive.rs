@@ -10,7 +10,6 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use zip::write::FileOptions;
 
-/// Utility to download multiple Bhavcopies concurrently and archive them into a ZIP file.
 #[pyclass]
 pub struct BhavArchive {
     client: Client,
@@ -24,12 +23,6 @@ impl BhavArchive {
         Ok(BhavArchive { client })
     }
 
-    /// Downloads equity bhavcopies for a list of dates and packs them into a single ZIP file.
-    ///
-    /// Up to 5 downloads run concurrently. Download failures are non-fatal: failed dates
-    /// are collected and returned alongside the success count.
-    ///
-    /// Returns `(success_count, failed_dates)`.
     fn archive_equities(
         &self,
         py: Python<'_>,
@@ -73,43 +66,13 @@ impl BhavArchive {
                             ));
                         }
                     }
+
                     let file = File::create(path).map_err(FinanceError::Io)?;
                     let mut zip = zip::ZipWriter::new(file);
-                    // 0o644 — readable data files, not executable.
                     let options: FileOptions<'_, ()> = FileOptions::default()
                         .compression_method(zip::CompressionMethod::Stored)
                         .unix_permissions(0o644);
 
-                    // Limit concurrent NSE downloads to avoid rate-limiting.
-                    let semaphore = Arc::new(Semaphore::new(5));
-                    let mut set: JoinSet<(String, crate::error::FinanceResult<bytes::Bytes>)> =
-                        JoinSet::new();
-                    let client = self.client.clone();
-
-                    for date in dates {
-                        let sem_clone = semaphore.clone();
-                        let client_clone = client.clone();
-                        let date_clone = date.clone();
-                        set.spawn(async move {
-                            let _permit = sem_clone
-                                .acquire()
-                                .await
-                                .expect("BhavArchive semaphore should never close");
-                            let res =
-                                crate::equities::bhav_copy_equities(&client_clone, &date_clone)
-                                    .await;
-                            (date_clone, res)
-                        });
-                    }
-                    }
-                    let file = File::create(path).map_err(FinanceError::Io)?;
-                    let mut zip = zip::ZipWriter::new(file);
-                    // 0o644 — readable data files, not executable.
-                    let options: FileOptions<'_, ()> = FileOptions::default()
-                        .compression_method(zip::CompressionMethod::Stored)
-                        .unix_permissions(0o644);
-
-                    // Limit concurrent NSE downloads to avoid rate-limiting.
                     let semaphore = Arc::new(Semaphore::new(5));
                     let mut set: JoinSet<(String, crate::error::FinanceResult<bytes::Bytes>)> =
                         JoinSet::new();
@@ -139,61 +102,16 @@ impl BhavArchive {
                             res.map_err(|e| FinanceError::Runtime(e.to_string()))?;
                         match result {
                             Ok(data) => {
-                                // Use the raw date string as given by the caller for the filename,
-                                // so the archive reflects what the caller requested.
-                                let sanitized_date = date.replace('/', "_").replace('\\', "_");
-                                zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
+                                let clean_date = sanitize_date_for_archive(&date);
+                                zip.start_file(format!("bhav_{}.csv", clean_date), options)
                                     .map_err(|e| FinanceError::Runtime(e.to_string()))?;
                                 zip.write_all(&data).map_err(FinanceError::Io)?;
                                 success_count += 1;
                             }
                             Err(e) => {
-                                // Log the failure but continue downloading the remaining dates.
                                 log::warn!("Failed to download bhavcopy for {}: {}", date, e);
                                 failed_dates.push(date);
                             }
-                while let Some(res) = set.join_next().await {
-                    let (date, result) =
-                        res.map_err(|e| FinanceError::Runtime(e.to_string()))?;
-                    match result {
-                        Ok(data) => {
-                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
-                            let sanitized_date = date.replace('/', "_").replace('\\', "_");
-                            // Use the sanitized date string for the filename
-                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
-                            // Sanitize the date string to prevent Zip Slip and path traversal
-                            let safe_date = date.replace('/', "_").replace('\\', "_");
-                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
-                            // Use the raw date string as given by the caller for the filename,
-                            // so the archive reflects what the caller requested.
-                            // Ensure the date string does not contain path separators to prevent path traversal
-                            let sanitized_date = date.replace('/', "_").replace('\\', "_");
-                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
-                            // Sanitize the date string to prevent Zip Slip and path traversal vulnerabilities.
-                            let safe_date = date.replace('/', "_").replace('\\', "_");
-                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
-                            // Sanitize user input to prevent path traversal vulnerabilities.
-                            let sanitized_date = date.replace("/", "_").replace("\\", "_");
-                            zip.start_file(format!("bhav_{}.csv", sanitized_date), options)
-                            // Sanitize the date string to prevent path traversal (Zip Slip)
-                            let safe_date = date.replace("/", "_").replace("\\", "_");
-                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
-                            // Sanitize the date string to prevent Zip Slip / path traversal vulnerabilities
-                            let safe_date = date.replace('/', "_").replace('\\', "_");
-                            zip.start_file(format!("bhav_{}.csv", safe_date), options)
-                            // Sanitize the date to prevent zip slip / path traversal inside the zip archive.
-                            let clean_date = sanitize_date_for_archive(&date);
-
-                            // Use the cleaned date string for the filename.
-                            zip.start_file(format!("bhav_{}.csv", clean_date), options)
-                                .map_err(|e| FinanceError::Runtime(e.to_string()))?;
-                            zip.write_all(&data).map_err(FinanceError::Io)?;
-                            success_count += 1;
-                        }
-                        Err(e) => {
-                            // Log the failure but continue downloading the remaining dates.
-                            log::warn!("Failed to download bhavcopy for {}: {}", date, e);
-                            failed_dates.push(date);
                         }
                     }
 
@@ -213,10 +131,8 @@ impl BhavArchive {
     }
 }
 
-/// Sanitize a date string for use in ZIP entry filenames.
-/// Replaces path separators ('/' and '\\') with underscores to prevent zip slip.
 fn sanitize_date_for_archive(date: &str) -> String {
-    date.replace('/', "_").replace('\\', "_")
+    date.replace(['/', '\\'], "_")
 }
 
 #[cfg(test)]

@@ -4,24 +4,27 @@ use chrono::NaiveDate;
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use reqwest::Client;
-use reqwest::redirect::Policy;
 use reqwest::header::REFERER;
-use reqwest::redirect::Policy;
 use serde::{self, Deserialize};
 use std::io::Read;
 use std::time::Duration;
 use tokio::time::sleep;
 
-/// Centralized NSE API constants.
 pub const NSE_ALL_REPORTS_URL: &str = "https://www.nseindia.com/all-reports";
 pub const NSE_DATE_FMT: &str = "%d-%m-%Y";
 pub const SESSION_REFRESH_INTERVAL: Duration = Duration::from_secs(900);
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
-pub const MAX_RESPONSE_SIZE: usize = 50 * 1024 * 1024; // 50 MB
-pub const MAX_DECOMPRESSED_ENTRY_SIZE: u64 = 50 * 1024 * 1024; // 50 MB
+pub const MAX_RESPONSE_SIZE: usize = 50 * 1024 * 1024;
+pub const MAX_DECOMPRESSED_ENTRY_SIZE: u64 = 50 * 1024 * 1024;
 const MAX_RETRIES: u32 = 3;
 
-/// Common helper to build a pre-configured NSE-compatible HTTP Client.
+fn is_trusted_redirect_host(host: &str) -> bool {
+    host == "nseindia.com"
+        || host.ends_with(".nseindia.com")
+        || host == "mcxindia.com"
+        || host.ends_with(".mcxindia.com")
+}
+
 pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> FinanceResult<Client> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
@@ -51,193 +54,24 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         headers.extend(extra);
     }
 
-    let policy = reqwest::redirect::Policy::custom(|attempt| {
+    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() > 10 {
-    let policy = Policy::custom(|attempt| {
-        if attempt.previous().len() > 10 {
-            return attempt.error("too many redirects");
-        }
-        let host = attempt.url().host_str().unwrap_or("");
-    // Security enhancement: Restrict reqwest redirect policy to prevent SSRF and open redirect attacks.
-    let policy = reqwest::redirect::Policy::custom(|attempt| {
-        if attempt.previous().len() > 10 {
-            attempt.error("too many redirects")
-        } else if let Some(host) = attempt.url().host_str() {
             return attempt.error("too many redirects");
         }
 
         if let Some(host) = attempt.url().host_str() {
-    let custom_policy = reqwest::redirect::Policy::custom(|attempt| {
-        if attempt.previous().len() > 10 {
-            return attempt.error("too many redirects");
-        }
-        if let Some(host) = attempt.url().host_str() {
-            if host == "nseindia.com" || host.ends_with(".nseindia.com") || host == "mcxindia.com" || host.ends_with(".mcxindia.com") {
-                return attempt.follow();
-            }
-        }
-        attempt.stop()
-    });
-
-
-        attempt.error("untrusted redirect target")
-        let url = attempt.url();
-        if url.scheme() != "https" && url.scheme() != "http" {
-            return attempt.error("invalid scheme");
-        }
-        if let Some(host) = url.host_str() {
-        let target = attempt.url();
-        if let Some(host) = target.host_str() {
-
-        if let Some(host) = attempt.url().host_str() {
-            if host == "nseindia.com" || host.ends_with(".nseindia.com") || host == "mcxindia.com" || host.ends_with(".mcxindia.com") {
-                attempt.follow()
+            if is_trusted_redirect_host(host) {
+                if attempt.url().scheme() == "https" {
+                    attempt.follow()
+                } else {
+                    attempt.error("redirect scheme must be https")
+                }
             } else {
                 attempt.error("untrusted redirect domain")
             }
         } else {
-             attempt.error("no host in redirect")
+            attempt.error("redirect missing host")
         }
-    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
-        if attempt.previous().len() > 10 {
-            return attempt.error("too many redirects");
-        }
-
-        if let Some(host) = attempt.url().host_str() {
-            if host.ends_with(".nseindia.com")
-                || host == "nseindia.com"
-                || host.ends_with(".mcxindia.com")
-                || host == "mcxindia.com"
-            {
-                return attempt.follow();
-            }
-        }
-
-        attempt.error("untrusted redirect target")
-        let url = attempt.url();
-        if url.scheme() != "https" {
-            return attempt.error("invalid redirect scheme: only https is allowed");
-        }
-        if let Some(host) = url.host_str() {
-    let policy = reqwest::redirect::Policy::custom(|attempt| {
-        if attempt.previous().len() > 10 {
-            attempt.error("too many redirects")
-        } else {
-            if let Some(host) = attempt.url().host_str() {
-                if host == "nseindia.com"
-                    || host.ends_with(".nseindia.com")
-                    || host == "mcxindia.com"
-                    || host.ends_with(".mcxindia.com")
-                {
-                    attempt.follow()
-                } else {
-                    attempt.error("Untrusted redirect host to prevent SSRF")
-                }
-            } else {
-                attempt.error("Redirect missing host")
-            }
-        }
-            return attempt.error("too many redirects");
-        }
-        if let Some(host) = attempt.url().host_str() {
-            if !(host == "nseindia.com"
-                || host.ends_with(".nseindia.com")
-                || host == "mcxindia.com"
-                || host.ends_with(".mcxindia.com"))
-            {
-                return attempt.error("redirect to untrusted domain");
-            }
-        } else {
-            return attempt.error("redirect to invalid domain");
-        }
-
-        attempt.follow()
-            return attempt.error("redirect with no host");
-        }
-        attempt.follow()
-
-    let custom_policy = reqwest::redirect::Policy::custom(|attempt| {
-        if attempt.previous().len() > 10 {
-            return attempt.error("too many redirects");
-        }
-        let url = attempt.url();
-        if let Some(host) = url.host_str() {
-    let redirect_policy = Policy::custom(|attempt| {
-        if attempt.previous().len() > 10 {
-            return attempt.error("too many redirects");
-        }
-
-        let host = attempt.url().host_str().unwrap_or("");
-        let is_allowed = host == "nseindia.com"
-            || host.ends_with(".nseindia.com")
-            || host == "mcxindia.com"
-            || host.ends_with(".mcxindia.com");
-
-        if !is_allowed {
-            return attempt.error("redirect to untrusted domain");
-        }
-        attempt.follow()
-        if host == "nseindia.com"
-            || host.ends_with(".nseindia.com")
-            || host == "mcxindia.com"
-            || host.ends_with(".mcxindia.com")
-        {
-            attempt.follow()
-        } else {
-            attempt.error("untrusted redirect domain")
-        }
-            attempt.stop()
-        }
-    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
-        if let Some(host) = attempt.url().host_str() {
-            if host == "nseindia.com"
-                || host.ends_with(".nseindia.com")
-                || host == "mcxindia.com"
-                || host.ends_with(".mcxindia.com")
-            {
-                attempt.follow()
-            } else {
-                attempt.error("untrusted redirect target")
-            }
-        } else {
-            attempt.error("invalid redirect url")
-        }
-                attempt.stop()
-            }
-        } else {
-            attempt.stop()
-        }
-                attempt.error("untrusted domain")
-            }
-        } else {
-            attempt.error("missing host")
-        }
-                attempt.error("untrusted redirect host")
-            }
-        } else {
-            attempt.error("missing host in redirect url")
-        }
-                return attempt.follow();
-            }
-        }
-        attempt.error("redirect to untrusted domain")
-        attempt.error("untrusted redirect domain")
-                attempt.follow()
-            } else {
-                attempt.error("redirect to untrusted domain")
-            }
-        } else {
-            attempt.error("redirect with no host")
-        }
-            attempt.error("invalid redirect url")
-        }
-            attempt.error("redirect to url without host")
-        }
-                return attempt.follow();
-            }
-        }
-        attempt.error("redirect to untrusted domain")
-        attempt.stop()
     });
 
     Ok(reqwest::ClientBuilder::new()
@@ -245,15 +79,9 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         .cookie_store(true)
         .redirect(redirect_policy)
         .timeout(DEFAULT_TIMEOUT)
-        .redirect(policy)
-        .redirect(custom_policy)
-        .redirect(policy)
-        .redirect(custom_policy)
-        .redirect(redirect_policy)
         .build()?)
 }
 
-/// Internal helper to parse dates from various common formats.
 pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
     let formats = [
         NSE_DATE_FMT,
@@ -264,7 +92,6 @@ pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
         "%d%b%Y",
     ];
 
-    // Normalise slashes to hyphens, then try each known format.
     let clean = date.replace('/', "-").replace('\\', "-");
     for fmt in formats {
         if let Ok(d) = NaiveDate::parse_from_str(&clean, fmt) {
@@ -278,10 +105,6 @@ pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
     )))
 }
 
-/// Internal helper to execute a GET request with exponential-backoff retries.
-///
-/// The `ACCEPT: */*` header is already set on every client via `build_client`; no
-/// per-request duplicate is emitted. A `Referer` header is added when provided.
 pub async fn fetch_bytes(
     client: &Client,
     url: &str,
@@ -324,7 +147,6 @@ pub async fn fetch_bytes(
                             }
                         }
                     } else {
-                        // Stream the body for unknown-length responses to enforce the limit
                         let mut buf = Vec::new();
                         use futures_util::StreamExt;
                         let mut stream = checked.bytes_stream();
@@ -361,7 +183,6 @@ pub async fn fetch_bytes(
                         sleep(delay).await;
                         delay *= 2;
                     } else {
-                        // Non-retryable HTTP error (e.g. 404, 403).
                         return Err(FinanceError::Http(e));
                     }
                 }
@@ -380,12 +201,10 @@ pub async fn fetch_bytes(
     )))
 }
 
-/// Parse raw JSON bytes into a `serde_json::Value`.
 pub fn parse_json_value(bytes: &[u8]) -> FinanceResult<serde_json::Value> {
     Ok(serde_json::from_slice(bytes)?)
 }
 
-/// Parse CSV bytes into a columnar Python dictionary `Dict[str, List[Any]]`.
 pub fn parse_csv_to_py(py: Python<'_>, csv_bytes: &[u8]) -> PyResult<PyObject> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -419,7 +238,6 @@ pub fn parse_csv_to_py(py: Python<'_>, csv_bytes: &[u8]) -> PyResult<PyObject> {
     Ok(dict.into_any().unbind())
 }
 
-/// Extract the first non-directory file from a ZIP archive as raw bytes.
 pub fn read_first_text_file_from_zip(bytes: Bytes) -> FinanceResult<Bytes> {
     let reader = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(reader)?;
@@ -436,9 +254,6 @@ pub fn read_first_text_file_from_zip(bytes: Bytes) -> FinanceResult<Bytes> {
                 .take(MAX_DECOMPRESSED_ENTRY_SIZE)
                 .read_to_end(&mut buf)?;
             if buf.len() as u64 >= MAX_DECOMPRESSED_ENTRY_SIZE {
-                // Double check if we actually reached the limit.
-                // take() doesn't error when reaching the limit, it just stops.
-                // We can check if there's more data.
                 let mut probe = [0u8; 1];
                 if file.read(&mut probe).unwrap_or(0) > 0 {
                     return Err(FinanceError::Runtime(format!(
@@ -456,7 +271,6 @@ pub fn read_first_text_file_from_zip(bytes: Bytes) -> FinanceResult<Bytes> {
     ))
 }
 
-/// Parse JSON bytes into a specific typed Python object.
 pub fn parse_json_to_py_typed<'py, T>(py: Python<'py>, json_bytes: &[u8]) -> PyResult<PyObject>
 where
     T: for<'de> serde::Deserialize<'de> + IntoPyObject<'py>,
@@ -466,7 +280,6 @@ where
     Ok(value.into_bound_py_any(py)?.unbind())
 }
 
-/// Parse CSV bytes into a specific typed Python list.
 pub fn parse_csv_to_py_typed<'py, T>(py: Python<'py>, csv_bytes: &[u8]) -> PyResult<PyObject>
 where
     T: for<'de> serde::Deserialize<'de> + IntoPyObject<'py>,
@@ -512,20 +325,17 @@ mod tests {
 
     #[test]
     fn test_parse_date_slash_separator() {
-        // Slashes should be normalised to hyphens before parsing.
         assert!(parse_date_robust("15/05/2023").is_ok());
     }
 
     #[test]
     fn test_parse_date_backslash_separator() {
-        // Backslashes should be normalised to hyphens before parsing, matching slash behavior.
         let result = parse_date_robust("15\\05\\2023");
         assert!(result.is_ok());
         assert_eq!(result.unwrap().to_string(), "2023-05-15");
     }
 }
 
-/// Custom deserializer for optional f64, handling comma separators and placeholder characters.
 pub fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
 where
     D: serde::Deserializer<'de>,
