@@ -46,14 +46,37 @@ pub struct Holiday {
     pub week_day: Option<String>,
 }
 
+/// Wrapper for holidays API response (NSE returns {"CBM": [...]})
+#[pyclass(get_all)]
+#[derive(Debug, Clone, Deserialize)]
+pub struct HolidaysResponse {
+    #[serde(rename = "CBM")]
+    pub cbm: Vec<Holiday>,
+}
+
 #[pyclass(get_all)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct ASMStock {
-    pub indicator: Option<String>,
-    pub time: Option<String>,
+    pub symbol: Option<String>,
     #[serde(rename = "companyName")]
     pub company_name: Option<String>,
-    pub symbol: Option<String>,
+    #[serde(rename = "asmSurvIndicator")]
+    pub indicator: Option<String>,
+    #[serde(rename = "asmTime")]
+    pub time: Option<String>,
+}
+
+/// Wrapper for ASM API response (NSE returns {"longterm": {"data": [...]}})
+#[pyclass(get_all)]
+#[derive(Debug, Clone, Deserialize)]
+pub struct ASMResponse {
+    pub longterm: ASMDataWrapper,
+}
+
+#[pyclass(get_all)]
+#[derive(Debug, Clone, Deserialize)]
+pub struct ASMDataWrapper {
+    pub data: Vec<ASMStock>,
 }
 
 #[pyclass(get_all)]
