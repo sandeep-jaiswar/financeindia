@@ -97,7 +97,9 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::holidays(client).await?;
             Python::with_gil(|py| {
-                crate::common::parse_json_to_py_typed::<Vec<crate::models::Holiday>>(py, &bytes)
+                let response: crate::models::HolidaysResponse =
+                    serde_json::from_slice(&bytes).map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
+                crate::common::to_py_list(py, response.cbm)
             })
         })
     }
@@ -721,7 +723,9 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::asm_stocks(client).await?;
             Python::with_gil(|py| {
-                crate::common::parse_json_to_py_typed::<Vec<crate::models::ASMStock>>(py, &bytes)
+                let response: crate::models::ASMResponse =
+                    serde_json::from_slice(&bytes).map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
+                crate::common::to_py_list(py, response.longterm.data)
             })
         })
     }

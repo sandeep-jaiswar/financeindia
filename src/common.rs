@@ -1,4 +1,4 @@
-use crate::error::*;
+use crate::error::{self, FinanceError, FinanceResult};
 use bytes::Bytes;
 use chrono::NaiveDate;
 use pyo3::IntoPyObjectExt;
@@ -177,18 +177,32 @@ pub async fn fetch_bytes(
                         .unwrap_or_else(|| "Unknown".to_string());
                     last_error =
                         format!("HTTP error {} for {} on attempt {}", status, url, attempt);
-                    if e.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS)
-                        || e.status().map(|s| s.is_server_error()).unwrap_or(false)
-                    {
+                    if e.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS) {
+                        // Rate limited
+                        return Err(error::rate_limited_error(None));
+                    } else if e.status().map(|s| s.is_server_error()).unwrap_or(false) {
+                        // Server error - retry
                         sleep(delay).await;
                         delay *= 2;
+                    } else if let Some(status_code) = e.status() {
+                        // Client error (4xx except 429)
+                        return Err(error::status_code_error(
+                            status_code.as_u16(),
+                            e.to_string(),
+                        ));
                     } else {
-                        return Err(FinanceError::Http(e));
+                        // No status code - likely connection error
+                        return Err(error::network_error(e.to_string()));
                     }
                 }
             },
             Err(e) => {
                 last_error = format!("Network error for {} on attempt {}: {}", url, attempt, e);
+                if e.is_timeout() {
+                    return Err(FinanceError::Network(format!("Connection timeout: {}", e)));
+                } else if e.is_connect() {
+                    return Err(FinanceError::Network(format!("Connection refused: {}", e)));
+                }
                 sleep(delay).await;
                 delay *= 2;
             }
@@ -334,6 +348,14 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().to_string(), "2023-05-15");
     }
+}
+
+pub fn to_py_list<'py, T: IntoPyObject<'py>>(py: Python<'py>, items: Vec<T>) -> PyResult<PyObject> {
+    let list = pyo3::types::PyList::empty(py);
+    for item in items {
+        list.append(item.into_bound_py_any(py)?)?;
+    }
+    Ok(list.into_any().unbind())
 }
 
 pub fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
