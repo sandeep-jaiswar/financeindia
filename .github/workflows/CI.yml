@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13.11"
+          python-version: "3.12.7"
 
       - name: Install cross-toolchains (fallbacks)
         if: contains(fromJSON('["s390x", "ppc64le"]'), matrix.platform.target)
@@ -66,7 +66,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --zig --compatibility manylinux_2_34 -i python3.13
+          args: --release --out dist --zig --compatibility manylinux_2_34 -i python3.12
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
       - name: Test Wheel Import
@@ -102,12 +102,12 @@ jobs:
       - uses: actions/setup-python@v6
         if: matrix.platform.target == 'x86_64'
         with:
-          python-version: "3.13.11"
+          python-version: "3.12.7"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --zig -i python3.13
+          args: --release --out dist --zig -i python3.12
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: musllinux_1_2
 
@@ -135,14 +135,14 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13.11"
+          python-version: "3.12.7"
           architecture: ${{ matrix.platform.python_arch }}
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist -i python3.13
+          args: --release --out dist -i python3.12
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
       - name: Test Wheel Import
@@ -174,13 +174,13 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13.11"
+          python-version: "3.12.7"
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist -i python3.13
+          args: --release --out dist -i python3.12
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
       - name: Test Wheel Import
