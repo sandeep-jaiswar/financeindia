@@ -46,3 +46,23 @@ The `fetch_py!` macro bridges async functions to the sync Python API by spawning
 ## Recent Security Work
 
 The recent commits added Zip Slip vulnerability protection in `archive.rs` - filenames from zip archives are sanitized to prevent path traversal attacks.
+
+## Commit Convention
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/) with strict enforcement via git hooks:
+
+```bash
+# Valid commit examples
+git commit -m "feat: add new API endpoint"
+git commit -m "fix: resolve authentication issue"
+git commit -m "docs: update README"
+git commit -m "refactor: simplify error handling"
+
+# Invalid - will be rejected
+git commit -m "fixed bug"      # missing type
+git commit -m "WIP: something"  # invalid type
+```
+
+Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`
+
+Hooks are in [.husky/](.husky/) and configured via [commitlint.config.js](commitlint.config.js).
