@@ -122,7 +122,6 @@ pub async fn fetch_bytes(
         match rb.send().await {
             Ok(resp) => match resp.error_for_status() {
                 Ok(checked) => {
-                    let mut accumulated_size = 0;
                     if let Some(len) = checked.content_length() {
                         if len > MAX_RESPONSE_SIZE as u64 {
                             return Err(FinanceError::Runtime(format!(
@@ -131,44 +130,46 @@ pub async fn fetch_bytes(
                                 MAX_RESPONSE_SIZE / (1024 * 1024)
                             )));
                         }
-                        accumulated_size = len as usize;
                     }
 
-                    if accumulated_size > 0 {
-                        match checked.bytes().await {
-                            Ok(b) => return Ok(b),
-                            Err(e) => {
-                                last_error = format!(
-                                    "Error reading body from {} on attempt {}: {}",
-                                    url, attempt, e
-                                );
-                                sleep(delay).await;
-                                delay *= 2;
+                    let mut buf = Vec::new();
+                    use futures_util::StreamExt;
+                    let mut stream = checked.bytes_stream();
+                    let mut accumulated_size = 0;
+                    let mut stream_error = None;
+
+                    while let Some(chunk_res) = stream.next().await {
+                        match chunk_res {
+                            Ok(chunk) => {
+                                accumulated_size += chunk.len();
+                                if accumulated_size > MAX_RESPONSE_SIZE {
+                                    stream_error = Some(FinanceError::Runtime(format!(
+                                        "Response from {} exceeded {} MB limit",
+                                        url,
+                                        MAX_RESPONSE_SIZE / (1024 * 1024)
+                                    )));
+                                    break;
+                                }
+                                buf.extend_from_slice(&chunk);
                             }
-                        }
-                    } else {
-                        let mut buf = Vec::new();
-                        use futures_util::StreamExt;
-                        let mut stream = checked.bytes_stream();
-                        while let Some(chunk_res) = stream.next().await {
-                            let chunk = chunk_res.map_err(|e: reqwest::Error| {
-                                FinanceError::Runtime(format!(
+                            Err(e) => {
+                                stream_error = Some(FinanceError::Runtime(format!(
                                     "Chunk stream error from {}: {}",
                                     url, e
-                                ))
-                            })?;
-                            accumulated_size += chunk.len();
-                            if accumulated_size > MAX_RESPONSE_SIZE {
-                                return Err(FinanceError::Runtime(format!(
-                                    "Response from {} exceeded {} MB limit",
-                                    url,
-                                    MAX_RESPONSE_SIZE / (1024 * 1024)
                                 )));
+                                break;
                             }
-                            buf.extend_from_slice(&chunk);
                         }
-                        return Ok(Bytes::from(buf));
                     }
+
+                    if let Some(e) = stream_error {
+                        last_error = format!("Error reading body from {} on attempt {}: {}", url, attempt, e);
+                        sleep(delay).await;
+                        delay *= 2;
+                        continue;
+                    }
+
+                    return Ok(Bytes::from(buf));
                 }
                 Err(e) => {
                     let status = e
