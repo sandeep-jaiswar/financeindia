@@ -164,3 +164,7 @@
 **Vulnerability:** The `reqwest::Client` built in `src/common.rs` was configured with its default behavior, which follows redirects automatically to any domain.
 **Learning:** Even if the initial URL is hardcoded or strictly validated to be a trusted domain (like `nseindia.com`), an attacker could potentially control the response (e.g., via user-controlled data or a compromised subdomain) to issue an HTTP 301/302 redirect. Because the HTTP client followed redirects without restriction, it could be forced to fetch data from internal IPs or unapproved domains, bypassing initial SSRF protections.
 **Prevention:** Always explicitly configure a custom `reqwest::redirect::Policy` that enforces the same domain whitelist restrictions on redirected URLs as the initial requests.
+## 2026-05-19 - [DoS via trusting Content-Length]
+**Vulnerability:** In `src/common.rs`, the HTTP client trusted the `Content-Length` header to determine if a response could be safely loaded into memory using `bytes()`. A malicious server could return a small `Content-Length` but send an infinitely large body, causing OOM (Out of Memory) and DoS.
+**Learning:** Trusting `Content-Length` headers to manage memory allocation for network responses is unsafe because attackers can spoof this header. Relying on it can lead to memory exhaustion attacks.
+**Prevention:** Always stream responses using `bytes_stream()` and enforce memory limits dynamically as the data is read in chunks.
