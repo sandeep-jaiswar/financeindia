@@ -74,7 +74,9 @@ impl From<FinanceError> for PyErr {
             FinanceError::Io(e) => NetworkError::new_err(format!("IO error: {}", e)),
             FinanceError::Zip(e) => DataError::new_err(format!("Zip error: {}", e)),
             FinanceError::Xml(e) => XMLParseError::new_err(e.to_string()),
-            FinanceError::UrlParse(e) => ValidationError::new_err(format!("URL parse error: {}", e)),
+            FinanceError::UrlParse(e) => {
+                ValidationError::new_err(format!("URL parse error: {}", e))
+            }
             FinanceError::Py(s) => FinanceException::new_err(s),
             FinanceError::PyErr(e) => e,
             FinanceError::Runtime(s) => FinanceException::new_err(s),
