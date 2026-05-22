@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use reqwest::Client;
-use reqwest::header::REFERER;https://github.com/
+use reqwest::header::REFERER;
 use serde::{self, Deserialize};
 use std::io::Read;
 use std::time::Duration;
@@ -136,11 +136,6 @@ pub async fn fetch_bytes(
                     let mut buf = Vec::new();
                     use futures_util::StreamExt;
                     let mut stream = checked.bytes_stream();
-                    let mut chunk_error = false;
-                    let mut buf = Vec::new();
-                    use futures_util::StreamExt;
-                    let mut stream = checked.bytes_stream();
-                    let mut accumulated_size = 0;
                     let mut stream_error = false;
                     while let Some(chunk_res) = stream.next().await {
                         match chunk_res {
