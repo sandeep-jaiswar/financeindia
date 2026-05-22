@@ -162,13 +162,11 @@ pub async fn fetch_bytes(
                                 );
                                 sleep(delay).await;
                                 delay *= 2;
-                                chunk_error = true;
                                 stream_error = true;
                                 break;
                             }
                         }
                     }
-                    if !chunk_error {
                     if !stream_error {
                         return Ok(Bytes::from(buf));
                     }
