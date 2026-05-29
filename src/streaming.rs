@@ -14,9 +14,8 @@ pub struct MarketStream {
 impl MarketStream {
     #[new]
     pub fn new(url: String) -> PyResult<Self> {
-        let parsed_url = url::Url::parse(&url).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("Invalid URL: {}", e))
-        })?;
+        let parsed_url = url::Url::parse(&url)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid URL: {}", e)))?;
 
         let scheme = parsed_url.scheme();
         if scheme != "ws" && scheme != "wss" {
@@ -25,9 +24,9 @@ impl MarketStream {
             ));
         }
 
-        let host = parsed_url.host_str().ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err("URL has no host")
-        })?;
+        let host = parsed_url
+            .host_str()
+            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("URL has no host"))?;
 
         if !host.ends_with(".nseindia.com")
             && host != "nseindia.com"

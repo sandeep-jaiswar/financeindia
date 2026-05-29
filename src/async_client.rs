@@ -74,12 +74,7 @@ impl AsyncFinanceClient {
     }
 
     fn _initialize_session<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        dispatch_async!(
-            self,
-            py,
-            client,
-            Python::with_gil(|py| ().into_py_any(py))
-        )
+        dispatch_async!(self, py, client, Python::with_gil(|py| ().into_py_any(py)))
     }
 
     fn get_market_status<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -97,8 +92,8 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::holidays(client).await?;
             Python::with_gil(|py| {
-                let response: crate::models::HolidaysResponse =
-                    serde_json::from_slice(&bytes).map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
+                let response: crate::models::HolidaysResponse = serde_json::from_slice(&bytes)
+                    .map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
                 crate::common::to_py_list(py, response.cbm)
             })
         })
@@ -723,8 +718,8 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let bytes = crate::equities::asm_stocks(client).await?;
             Python::with_gil(|py| {
-                let response: crate::models::ASMResponse =
-                    serde_json::from_slice(&bytes).map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
+                let response: crate::models::ASMResponse = serde_json::from_slice(&bytes)
+                    .map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
                 crate::common::to_py_list(py, response.longterm.data)
             })
         })

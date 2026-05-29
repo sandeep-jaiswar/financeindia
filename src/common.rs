@@ -132,10 +132,10 @@ pub async fn fetch_bytes(
                         }
                     }
 
+                    let mut accumulated_size = 0;
                     let mut buf = Vec::new();
                     use futures_util::StreamExt;
                     let mut stream = checked.bytes_stream();
-                    let mut accumulated_size = 0;
                     let mut stream_error = false;
                     while let Some(chunk_res) = stream.next().await {
                         match chunk_res {
@@ -155,6 +155,8 @@ pub async fn fetch_bytes(
                                     "Chunk stream error from {} on attempt {}: {}",
                                     url, attempt, e
                                 );
+                                sleep(delay).await;
+                                delay *= 2;
                                 stream_error = true;
                                 break;
                             }

@@ -152,8 +152,8 @@ impl FinanceClient {
     /// Returns the current list of NSE stock market holidays.
     fn get_holidays(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::holidays)?;
-        let response: models::HolidaysResponse =
-            serde_json::from_slice(&json_bytes).map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
+        let response: models::HolidaysResponse = serde_json::from_slice(&json_bytes)
+            .map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
         // Return the array directly for backwards compatibility
         Ok(common::to_py_list(py, response.cbm)?)
     }
@@ -496,8 +496,8 @@ impl FinanceClient {
     /// Returns Additional Surveillance Measure (ASM) stocks.
     fn get_asm_stocks(&self, py: Python<'_>) -> PyResult<PyObject> {
         let json_bytes = fetch_py!(self, py, equities::asm_stocks)?;
-        let response: models::ASMResponse =
-            serde_json::from_slice(&json_bytes).map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
+        let response: models::ASMResponse = serde_json::from_slice(&json_bytes)
+            .map_err(|e| PyErr::from(crate::error::FinanceError::Json(e)))?;
         Ok(common::to_py_list(py, response.longterm.data)?)
     }
 
@@ -714,17 +714,29 @@ impl FinanceClient {
 #[pymodule]
 fn financeindia(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Exception classes
-    m.add("FinanceException", error::FinanceException::type_object(m.py()))?;
+    m.add(
+        "FinanceException",
+        error::FinanceException::type_object(m.py()),
+    )?;
     m.add("HTTPError", error::HTTPError::type_object(m.py()))?;
-    m.add("ConnectionError", error::ConnectionError::type_object(m.py()))?;
+    m.add(
+        "ConnectionError",
+        error::ConnectionError::type_object(m.py()),
+    )?;
     m.add("TimeoutError", error::TimeoutError::type_object(m.py()))?;
-    m.add("StatusCodeError", error::StatusCodeError::type_object(m.py()))?;
+    m.add(
+        "StatusCodeError",
+        error::StatusCodeError::type_object(m.py()),
+    )?;
     m.add("RateLimitError", error::RateLimitError::type_object(m.py()))?;
     m.add("DataError", error::DataError::type_object(m.py()))?;
     m.add("JSONParseError", error::JSONParseError::type_object(m.py()))?;
     m.add("CSVParseError", error::CSVParseError::type_object(m.py()))?;
     m.add("XMLParseError", error::XMLParseError::type_object(m.py()))?;
-    m.add("ValidationError", error::ValidationError::type_object(m.py()))?;
+    m.add(
+        "ValidationError",
+        error::ValidationError::type_object(m.py()),
+    )?;
     m.add("NetworkError", error::NetworkError::type_object(m.py()))?;
     m.add("UnknownError", error::UnknownError::type_object(m.py()))?;
 
