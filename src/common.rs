@@ -79,6 +79,7 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         .cookie_store(true)
         .redirect(redirect_policy)
         .timeout(DEFAULT_TIMEOUT)
+        .https_only(true)
         .build()?)
 }
 
