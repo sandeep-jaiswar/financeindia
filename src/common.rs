@@ -79,6 +79,7 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         .cookie_store(true)
         .redirect(redirect_policy)
         .timeout(DEFAULT_TIMEOUT)
+        .https_only(std::env::var("FINANCEINDIA_TEST_ENV").is_err())
         .build()?)
 }
 
