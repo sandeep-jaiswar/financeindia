@@ -75,6 +75,7 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
     });
 
     Ok(reqwest::ClientBuilder::new()
+        .https_only(true)
         .default_headers(headers)
         .cookie_store(true)
         .redirect(redirect_policy)
