@@ -74,11 +74,18 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         }
     });
 
-    Ok(reqwest::ClientBuilder::new()
+    let mut builder = reqwest::ClientBuilder::new()
         .default_headers(headers)
         .cookie_store(true)
         .redirect(redirect_policy)
-        .timeout(DEFAULT_TIMEOUT)
+        .timeout(DEFAULT_TIMEOUT);
+
+    // Conditionally enable https_only to allow local integration tests with http mocks
+    if std::env::var("FINANCEINDIA_TEST_ENV").is_err() {
+        builder = builder.https_only(true);
+    }
+
+    Ok(builder
         .build()?)
 }
 
