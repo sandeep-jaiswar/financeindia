@@ -172,3 +172,7 @@
 **Vulnerability:** In `src/common.rs`, `fetch_bytes` relied on `reqwest::Response::bytes()` to load the entire HTTP response body into memory when the server provided a `Content-Length` header. A malicious or compromised server could return a small `Content-Length` but stream an infinite amount of data, bypassing the length check and causing an unbounded memory allocation (Out-Of-Memory / DoS).
 **Learning:** Checking the `Content-Length` header is insufficient for enforcing maximum response sizes because `reqwest` does not limit the body stream length to the declared `Content-Length`. Attackers can exploit this to perform OOM DoS attacks.
 **Prevention:** Always use `bytes_stream()` to read response bodies in chunks, dynamically tracking the accumulated size and enforcing the maximum size limit regardless of the presence or value of a `Content-Length` header.
+## 2025-05-26 - [Fix insecure HTTP connections in reqwest client]
+**Vulnerability:** The HTTP client configured via `reqwest::ClientBuilder::new()` allowed unencrypted HTTP connections. This could allow for downgrade attacks or MITM (Man-In-The-Middle) attacks where traffic is intercepted and manipulated.
+**Learning:** Default behavior for `reqwest::Client` allows HTTP connections. Always ensure the client explicitly enforces HTTPS to guarantee data integrity and confidentiality.
+**Prevention:** Use `reqwest::ClientBuilder::https_only(true)` to enforce that all outgoing connections use the secure HTTPS protocol.
