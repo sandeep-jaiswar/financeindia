@@ -74,12 +74,17 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         }
     });
 
-    Ok(reqwest::ClientBuilder::new()
+    let mut builder = reqwest::ClientBuilder::new()
         .default_headers(headers)
         .cookie_store(true)
         .redirect(redirect_policy)
-        .timeout(DEFAULT_TIMEOUT)
-        .build()?)
+        .timeout(DEFAULT_TIMEOUT);
+
+    if std::env::var("FINANCEINDIA_TEST_ENV").is_err() {
+        builder = builder.https_only(true);
+    }
+
+    Ok(builder.build()?)
 }
 
 pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
