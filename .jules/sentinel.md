@@ -172,3 +172,8 @@
 **Vulnerability:** In `src/common.rs`, `fetch_bytes` relied on `reqwest::Response::bytes()` to load the entire HTTP response body into memory when the server provided a `Content-Length` header. A malicious or compromised server could return a small `Content-Length` but stream an infinite amount of data, bypassing the length check and causing an unbounded memory allocation (Out-Of-Memory / DoS).
 **Learning:** Checking the `Content-Length` header is insufficient for enforcing maximum response sizes because `reqwest` does not limit the body stream length to the declared `Content-Length`. Attackers can exploit this to perform OOM DoS attacks.
 **Prevention:** Always use `bytes_stream()` to read response bodies in chunks, dynamically tracking the accumulated size and enforcing the maximum size limit regardless of the presence or value of a `Content-Length` header.
+
+## 2026-07-08 - [Enforce HTTPS in HTTP Client]
+**Vulnerability:** The central HTTP client allowed plaintext HTTP connections, leaving the application vulnerable to downgrade attacks and Man-in-the-Middle (MitM) interceptions.
+**Learning:** Default HTTP client configurations typically allow both HTTP and HTTPS. Explicitly enforcing HTTPS is crucial for financial data integrations to maintain confidentiality and integrity.
+**Prevention:** Always configure central HTTP client builders with an `https_only(true)` directive (conditional on test environments) to reject non-HTTPS URLs at the client level.
