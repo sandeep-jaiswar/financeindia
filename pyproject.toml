@@ -38,3 +38,8 @@ Issues = "https://github.com/sandeep-jaiswar/financeindia/issues"
 features = ["pyo3/extension-module"]
 module-name = "financeindia.financeindia"
 python-packages = ["financeindia"]
+
+[tool.pytest.ini_options]
+env = [
+    "FINANCEINDIA_TEST_ENV=1"
+]
