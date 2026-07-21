@@ -19,10 +19,8 @@ pub const MAX_DECOMPRESSED_ENTRY_SIZE: u64 = 50 * 1024 * 1024;
 const MAX_RETRIES: u32 = 3;
 
 fn is_trusted_redirect_host(host: &str) -> bool {
-    host == "nseindia.com"
-        || host.ends_with(".nseindia.com")
-        || host == "mcxindia.com"
-        || host.ends_with(".mcxindia.com")
+    (host.ends_with(".nseindia.com") || host == "nseindia.com")
+        || (host.ends_with(".mcxindia.com") || host == "mcxindia.com")
 }
 
 pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> FinanceResult<Client> {
