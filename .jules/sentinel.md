@@ -172,3 +172,8 @@
 **Vulnerability:** In `src/common.rs`, `fetch_bytes` relied on `reqwest::Response::bytes()` to load the entire HTTP response body into memory when the server provided a `Content-Length` header. A malicious or compromised server could return a small `Content-Length` but stream an infinite amount of data, bypassing the length check and causing an unbounded memory allocation (Out-Of-Memory / DoS).
 **Learning:** Checking the `Content-Length` header is insufficient for enforcing maximum response sizes because `reqwest` does not limit the body stream length to the declared `Content-Length`. Attackers can exploit this to perform OOM DoS attacks.
 **Prevention:** Always use `bytes_stream()` to read response bodies in chunks, dynamically tracking the accumulated size and enforcing the maximum size limit regardless of the presence or value of a `Content-Length` header.
+
+## 2026-07-26 - [Fix MitM downgrade risk by enforcing HTTPS]
+**Vulnerability:** The HTTP client configured in `src/common.rs` via `reqwest::ClientBuilder::new()` did not restrict connections to HTTPS only. An attacker could potentially intercept and modify the request/response via a Man-in-the-Middle (MitM) or downgrade attack.
+**Learning:** Default HTTP client configurations might allow insecure HTTP requests if not explicitly restricted. When communicating with financial APIs or secure endpoints, it's critical to enforce HTTPS at the client level.
+**Prevention:** Always use `.https_only(true)` (or equivalent) in the `reqwest::ClientBuilder` configuration to enforce secure HTTP connections. Note that for testing environments, this might need to be conditionally applied based on environment variables like `FINANCEINDIA_TEST_ENV` to prevent breaking mock servers.
