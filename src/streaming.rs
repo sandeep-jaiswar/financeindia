@@ -28,10 +28,8 @@ impl MarketStream {
             .host_str()
             .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("URL has no host"))?;
 
-        if !host.ends_with(".nseindia.com")
-            && host != "nseindia.com"
-            && !host.ends_with(".mcxindia.com")
-            && host != "mcxindia.com"
+        if !(host.ends_with(".nseindia.com") || host == "nseindia.com")
+            && !(host.ends_with(".mcxindia.com") || host == "mcxindia.com")
         {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "Invalid domain: only nseindia.com, mcxindia.com and their subdomains are allowed.",

@@ -172,6 +172,10 @@
 **Vulnerability:** In `src/common.rs`, `fetch_bytes` relied on `reqwest::Response::bytes()` to load the entire HTTP response body into memory when the server provided a `Content-Length` header. A malicious or compromised server could return a small `Content-Length` but stream an infinite amount of data, bypassing the length check and causing an unbounded memory allocation (Out-Of-Memory / DoS).
 **Learning:** Checking the `Content-Length` header is insufficient for enforcing maximum response sizes because `reqwest` does not limit the body stream length to the declared `Content-Length`. Attackers can exploit this to perform OOM DoS attacks.
 **Prevention:** Always use `bytes_stream()` to read response bodies in chunks, dynamically tracking the accumulated size and enforcing the maximum size limit regardless of the presence or value of a `Content-Length` header.
+## 2026-07-25 - [Enforce HTTPS in HTTP Client]
+**Vulnerability:** The HTTP client in `src/common.rs` was not enforcing HTTPS-only connections. This allowed the client to potentially fall back to unencrypted HTTP when communicating with endpoints, leading to a risk of Man-in-the-Middle (MitM) attacks where an attacker could intercept or tamper with market data or API responses.
+**Learning:** Default client configurations often do not prevent HTTP downgrade attacks. We must explicitly enforce secure connections (e.g. `reqwest::ClientBuilder::https_only(true)`). In PyO3 architectures, conditionally compiling tests with `#[cfg(test)]` does not work during Python integration tests.
+**Prevention:** Always enforce HTTPS-only connections on external API clients and use environment variables (e.g. `FINANCEINDIA_TEST_ENV`) to conditionally disable the check for local mock test environments instead of relying on `#[cfg(test)]`.
 
 ## 2026-07-26 - [Fix MitM downgrade risk by enforcing HTTPS]
 **Vulnerability:** The HTTP client configured in `src/common.rs` via `reqwest::ClientBuilder::new()` did not restrict connections to HTTPS only. An attacker could potentially intercept and modify the request/response via a Man-in-the-Middle (MitM) or downgrade attack.
