@@ -176,3 +176,8 @@
 **Vulnerability:** The HTTP client in `src/common.rs` was not enforcing HTTPS-only connections. This allowed the client to potentially fall back to unencrypted HTTP when communicating with endpoints, leading to a risk of Man-in-the-Middle (MitM) attacks where an attacker could intercept or tamper with market data or API responses.
 **Learning:** Default client configurations often do not prevent HTTP downgrade attacks. We must explicitly enforce secure connections (e.g. `reqwest::ClientBuilder::https_only(true)`). In PyO3 architectures, conditionally compiling tests with `#[cfg(test)]` does not work during Python integration tests.
 **Prevention:** Always enforce HTTPS-only connections on external API clients and use environment variables (e.g. `FINANCEINDIA_TEST_ENV`) to conditionally disable the check for local mock test environments instead of relying on `#[cfg(test)]`.
+
+## 2026-07-26 - [Fix MitM downgrade risk by enforcing HTTPS]
+**Vulnerability:** The HTTP client configured in `src/common.rs` via `reqwest::ClientBuilder::new()` did not restrict connections to HTTPS only. An attacker could potentially intercept and modify the request/response via a Man-in-the-Middle (MitM) or downgrade attack.
+**Learning:** Default HTTP client configurations might allow insecure HTTP requests if not explicitly restricted. When communicating with financial APIs or secure endpoints, it's critical to enforce HTTPS at the client level.
+**Prevention:** Always use `.https_only(true)` (or equivalent) in the `reqwest::ClientBuilder` configuration to enforce secure HTTP connections. Note that for testing environments, this might need to be conditionally applied based on environment variables like `FINANCEINDIA_TEST_ENV` to prevent breaking mock servers.

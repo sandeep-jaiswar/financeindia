@@ -85,6 +85,9 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
     }
 
     Ok(builder.build()?)
+        .timeout(DEFAULT_TIMEOUT)
+        .https_only(std::env::var("FINANCEINDIA_TEST_ENV").is_err())
+        .build()?)
 }
 
 pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
