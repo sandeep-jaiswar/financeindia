@@ -72,12 +72,17 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         }
     });
 
-    Ok(reqwest::ClientBuilder::new()
+    let mut builder = reqwest::ClientBuilder::new()
         .default_headers(headers)
         .cookie_store(true)
         .redirect(redirect_policy)
-        .timeout(DEFAULT_TIMEOUT)
-        .build()?)
+        .timeout(DEFAULT_TIMEOUT);
+
+    if std::env::var("FINANCEINDIA_TEST_ENV").as_deref() != Ok("1") {
+        builder = builder.https_only(true);
+    }
+
+    Ok(builder.build()?)
 }
 
 pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
@@ -130,11 +135,12 @@ pub async fn fetch_bytes(
                         }
                     }
 
-                    let mut accumulated_size = 0;
                     let mut buf = Vec::new();
                     use futures_util::StreamExt;
                     let mut stream = checked.bytes_stream();
-                    let mut stream_error = false;
+                    let mut accumulated_size = 0;
+                    let mut stream_error = None;
+
                     while let Some(chunk_res) = stream.next().await {
                         match chunk_res {
                             Ok(chunk) => {
@@ -149,22 +155,26 @@ pub async fn fetch_bytes(
                                 buf.extend_from_slice(&chunk);
                             }
                             Err(e) => {
-                                last_error = format!(
-                                    "Chunk stream error from {} on attempt {}: {}",
-                                    url, attempt, e
-                                );
-                                sleep(delay).await;
-                                delay *= 2;
-                                stream_error = true;
+                                stream_error = Some(FinanceError::Runtime(format!(
+                                    "Chunk stream error from {}: {}",
+                                    url, e
+                                )));
                                 break;
                             }
                         }
                     }
-                    if !stream_error {
-                        return Ok(Bytes::from(buf));
+
+                    if let Some(e) = stream_error {
+                        last_error = format!(
+                            "Error reading body from {} on attempt {}: {}",
+                            url, attempt, e
+                        );
+                        sleep(delay).await;
+                        delay *= 2;
+                        continue;
                     }
-                    sleep(delay).await;
-                    delay *= 2;
+
+                    return Ok(Bytes::from(buf));
                 }
                 Err(e) => {
                     let status = e
@@ -343,6 +353,84 @@ mod tests {
         let result = parse_date_robust("15\\05\\2023");
         assert!(result.is_ok());
         assert_eq!(result.unwrap().to_string(), "2023-05-15");
+    }
+
+    #[test]
+    fn test_financeindia_test_env_logic() {
+        // Test that only the exact value "1" disables https_only
+        // All other cases (unset, empty, "0", "false", etc.) should enable https_only
+
+        // Save original env var state if it exists
+        let original = std::env::var("FINANCEINDIA_TEST_ENV").ok();
+
+        // Test case 1: unset -> should enable https_only
+        unsafe {
+            std::env::remove_var("FINANCEINDIA_TEST_ENV");
+        }
+        assert_ne!(
+            std::env::var("FINANCEINDIA_TEST_ENV").as_deref(),
+            Ok("1"),
+            "unset env var should not equal Ok(\"1\")"
+        );
+
+        // Test case 2: empty string -> should enable https_only
+        unsafe {
+            std::env::set_var("FINANCEINDIA_TEST_ENV", "");
+        }
+        assert_ne!(
+            std::env::var("FINANCEINDIA_TEST_ENV").as_deref(),
+            Ok("1"),
+            "empty string should not equal Ok(\"1\")"
+        );
+
+        // Test case 3: "0" -> should enable https_only
+        unsafe {
+            std::env::set_var("FINANCEINDIA_TEST_ENV", "0");
+        }
+        assert_ne!(
+            std::env::var("FINANCEINDIA_TEST_ENV").as_deref(),
+            Ok("1"),
+            "\"0\" should not equal Ok(\"1\")"
+        );
+
+        // Test case 4: "false" -> should enable https_only
+        unsafe {
+            std::env::set_var("FINANCEINDIA_TEST_ENV", "false");
+        }
+        assert_ne!(
+            std::env::var("FINANCEINDIA_TEST_ENV").as_deref(),
+            Ok("1"),
+            "\"false\" should not equal Ok(\"1\")"
+        );
+
+        // Test case 5: "true" -> should enable https_only
+        unsafe {
+            std::env::set_var("FINANCEINDIA_TEST_ENV", "true");
+        }
+        assert_ne!(
+            std::env::var("FINANCEINDIA_TEST_ENV").as_deref(),
+            Ok("1"),
+            "\"true\" should not equal Ok(\"1\")"
+        );
+
+        // Test case 6: "1" -> should DISABLE https_only (test mode)
+        unsafe {
+            std::env::set_var("FINANCEINDIA_TEST_ENV", "1");
+        }
+        assert_eq!(
+            std::env::var("FINANCEINDIA_TEST_ENV").as_deref(),
+            Ok("1"),
+            "\"1\" should equal Ok(\"1\")"
+        );
+
+        // Restore original env var state
+        unsafe {
+            if let Some(val) = original {
+                std::env::set_var("FINANCEINDIA_TEST_ENV", val);
+            } else {
+                std::env::remove_var("FINANCEINDIA_TEST_ENV");
+            }
+        }
     }
 }
 
