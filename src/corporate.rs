@@ -62,7 +62,7 @@ pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> FinanceResult<B
         .host_str()
         .ok_or_else(|| FinanceError::Runtime("URL has no host".to_string()))?;
 
-    if !host.ends_with(".nseindia.com") && host != "nseindia.com" {
+    if !(host.ends_with(".nseindia.com") || host == "nseindia.com") {
         return Err(FinanceError::Runtime(
             "URL host must be a trusted NSE domain".to_string(),
         ));
