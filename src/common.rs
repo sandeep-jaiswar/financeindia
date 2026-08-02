@@ -137,11 +137,12 @@ pub async fn fetch_bytes(
                         }
                     }
 
-                    let mut accumulated_size = 0;
                     let mut buf = Vec::new();
                     use futures_util::StreamExt;
                     let mut stream = checked.bytes_stream();
-                    let mut stream_error = false;
+                    let mut accumulated_size = 0;
+                    let mut stream_error = None;
+
                     while let Some(chunk_res) = stream.next().await {
                         match chunk_res {
                             Ok(chunk) => {
@@ -156,22 +157,26 @@ pub async fn fetch_bytes(
                                 buf.extend_from_slice(&chunk);
                             }
                             Err(e) => {
-                                last_error = format!(
-                                    "Chunk stream error from {} on attempt {}: {}",
-                                    url, attempt, e
-                                );
-                                sleep(delay).await;
-                                delay *= 2;
-                                stream_error = true;
+                                stream_error = Some(FinanceError::Runtime(format!(
+                                    "Chunk stream error from {}: {}",
+                                    url, e
+                                )));
                                 break;
                             }
                         }
                     }
-                    if !stream_error {
-                        return Ok(Bytes::from(buf));
+
+                    if let Some(e) = stream_error {
+                        last_error = format!(
+                            "Error reading body from {} on attempt {}: {}",
+                            url, attempt, e
+                        );
+                        sleep(delay).await;
+                        delay *= 2;
+                        continue;
                     }
-                    sleep(delay).await;
-                    delay *= 2;
+
+                    return Ok(Bytes::from(buf));
                 }
                 Err(e) => {
                     let status = e
