@@ -176,6 +176,10 @@
 **Vulnerability:** The HTTP client was configured without enforcing HTTPS globally, leaving a risk of accidental HTTP usage or protocol downgrade attacks.
 **Learning:** For a library that interacts with external APIs like NSE, connections should strictly be HTTPS to protect against MitM attacks.
 **Prevention:** Always enforce HTTPS using `.https_only(true)` (or conditionally for tests) on the `reqwest::ClientBuilder`.
+## 2025-05-24 - [Fix HTTP Downgrade Vulnerability]
+**Vulnerability:** The HTTP client configured in `src/common.rs` via `reqwest::ClientBuilder` was missing the `.https_only(true)` enforcement, exposing the application to HTTP downgrade and Man-in-the-Middle (MitM) attacks if a non-HTTPS URL were requested.
+**Learning:** Security configurations like `.https_only(true)` must be explicitly applied in the core HTTP client builder to enforce encryption across the entire library.
+**Prevention:** Always ensure that `reqwest::ClientBuilder` is built with `.https_only(true)` enabled to prevent accidental or malicious usage of unencrypted `http://` protocols, using environment variables to conditionally bypass it for local testing if necessary.
 ## 2025-05-24 - [Fix Prefix Bypasses in Subdomain Validation]
 **Vulnerability:** Subdomain validation in multiple files (`src/common.rs`, `src/corporate.rs`, `src/streaming.rs`) previously relied on exact match checks or a simple `.ends_with` check. While `host == "nseindia.com" || host.ends_with(".nseindia.com")` correctly requires a dot before the domain, if the implementation missed the dot (e.g. `.ends_with("nseindia.com")`), it would be vulnerable to a prefix bypass (e.g., `attackernseindia.com`).
 **Learning:** The previous implementation `!host.ends_with(".nseindia.com") && host != "nseindia.com"` uses double negation, which can be confusing. However, it did include the dot. The refactored code `(host.ends_with(".nseindia.com") || host == "nseindia.com")` makes the intention clearer and protects against prefix bypasses while improving code readability.
