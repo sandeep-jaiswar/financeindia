@@ -40,7 +40,7 @@ print(data[0].close_price)
 
 # Fetch current quote (returns a dict)
 quote = client.get_equity_quote("RELIANCE")
-print(quote['priceInfo']['lastPrice'])
+print(quote['tradeInfo']['lastPrice'])
 
 # Fetch Corporate Financial Results
 # Returns a list of dicts with filing metadata
@@ -106,6 +106,11 @@ if results:
 - `get_slb_eligible()`: Real-time list of securities available for SLB.
 - `get_slb_open_positions(series)`: Open positions analysis for a specific month.
 - `get_slb_series_master()`: Helper to find active SLB series/months.
+
+### 📊 Commodities & MCX
+- `get_live_commodities_market()`: NSE commodity futures market watch.
+- `get_nse_commodities_bhavcopy(date)`: NSE Commodities bhavcopy.
+- `get_mcx_bhavcopy(date, instrument='ALL')`: MCX daily bhavcopy as a list of row dicts (futures & options). MCX's Akamai firewall requires the optional [`curl_cffi`](https://pypi.org/project/curl_cffi/) package — install with `pip install curl_cffi`.
 
 ### 🏢 Corporate Actions
 - `get_corporate_actions()`: Latest dividends, bonuses, splits, etc.

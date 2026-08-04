@@ -807,11 +807,4 @@ impl AsyncFinanceClient {
             Python::with_gil(|py| crate::common::parse_csv_to_py(py, &csv_str))
         })
     }
-
-    fn get_mcx_bhavcopy<'py>(&self, py: Python<'py>, date: String) -> PyResult<Bound<'py, PyAny>> {
-        dispatch_async!(self, py, client, {
-            let bytes = crate::commodities::mcx_bhavcopy(&client, &date).await?;
-            Python::with_gil(|py| Ok(pyo3::types::PyBytes::new(py, &bytes).into_any().unbind()))
-        })
-    }
 }

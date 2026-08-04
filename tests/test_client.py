@@ -69,10 +69,26 @@ def test_live_commodities_market(client):
     assert data is not None
     assert "marketStatus" in data
 
+def test_equity_quote(client):
+    quote = client.get_equity_quote("RELIANCE")
+    assert isinstance(quote, dict)
+    assert "tradeInfo" in quote
+    assert "priceInfo" in quote
+    assert quote["tradeInfo"]["lastPrice"] is not None
+
 def test_nse_commodities_bhavcopy(client):
     data = client.get_nse_commodities_bhavcopy("30-07-2026")
     assert isinstance(data, dict)
     assert "TradDt" in data
+
+def test_mcx_bhavcopy(client):
+    data = client.get_mcx_bhavcopy("30-07-2026")
+    assert isinstance(data, list)
+    assert len(data) > 0
+    row = data[0]
+    assert isinstance(row, dict)
+    assert "Symbol" in row
+    assert "Close" in row
 
 @pytest.mark.parametrize("symbol,is_index", [
     ("RELIANCE", False),

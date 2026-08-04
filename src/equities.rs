@@ -206,13 +206,18 @@ pub async fn equity_list(client: &Client) -> FinanceResult<Bytes> {
 }
 
 /// Fetches a detailed quote for an equity symbol.
+///
+/// NSE deprecated the `/api/quote-equity` endpoint (Akamai-blocked from most
+/// non-browser clients) in favour of the NextApi `GetQuoteApi` client. The
+/// response wraps the quote under `equityResponse[0]`, which is unwrapped here
+/// so the Python API shape is unchanged.
 pub async fn equity_quote(client: &Client, symbol: &str) -> FinanceResult<Bytes> {
     let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
     let url = format!(
-        "https://www.nseindia.com/api/quote-equity?symbol={}",
+        "https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=N&series=EQ&symbol={}",
         encoded_symbol
     );
-    fetch_bytes(
+    let bytes = fetch_bytes(
         client,
         &url,
         Some(&format!(
@@ -220,7 +225,21 @@ pub async fn equity_quote(client: &Client, symbol: &str) -> FinanceResult<Bytes>
             encoded_symbol
         )),
     )
-    .await
+    .await?;
+
+    let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+    let quote = value
+        .get("equityResponse")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .cloned()
+        .ok_or_else(|| {
+            FinanceError::Runtime(format!(
+                "No equity quote data returned for symbol: {}",
+                symbol
+            ))
+        })?;
+    Ok(Bytes::from(serde_json::to_vec(&quote)?))
 }
 
 /// Fetches Additional Surveillance Measure (ASM) stocks.

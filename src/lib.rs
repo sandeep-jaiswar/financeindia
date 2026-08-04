@@ -703,12 +703,6 @@ impl FinanceClient {
         let csv_str = fetch_py!(self, py, commodities::nse_commodities_bhavcopy, &date)?;
         Ok(common::parse_csv_to_py(py, &csv_str)?)
     }
-
-    /// Returns MCX Bhavcopy (ZIP/CSV bytes)
-    fn get_mcx_bhavcopy(&self, py: Python<'_>, date: String) -> PyResult<PyObject> {
-        let bytes = fetch_py!(self, py, commodities::mcx_bhavcopy, &date)?;
-        Ok(pyo3::types::PyBytes::new(py, &bytes).into_any().unbind())
-    }
 }
 
 #[pymodule]

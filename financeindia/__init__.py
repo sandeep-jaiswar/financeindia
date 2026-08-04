@@ -28,11 +28,27 @@ from .financeindia import (
     FinanceError,
 )
 
+from . import _mcx
+
 try:
     import polars as pl
     HAS_POLARS = True
 except ImportError:
     HAS_POLARS = False
+
+
+def _mcx_sync(client_self, date, instrument="ALL"):
+    return _mcx.fetch_mcx_bhavcopy(date, instrument)
+
+
+async def _mcx_async(client_self, date, instrument="ALL"):
+    import asyncio
+    return await asyncio.to_thread(_mcx.fetch_mcx_bhavcopy, date, instrument)
+
+
+FinanceClient.get_mcx_bhavcopy = _mcx_sync
+AsyncFinanceClient.get_mcx_bhavcopy = _mcx_async
+
 
 def _create_df_wrapper(method_name, is_async=False):
     if is_async:
@@ -59,7 +75,8 @@ TABULAR_METHODS = [
     "bulk_deal_data", "block_deals_data", "short_selling_data",
     "bhav_copy_derivatives", "get_span_margins", "get_fo_ban_list",
     "get_participant_volume", "get_insider_trades", "get_slb_bhavcopy",
-    "get_currency_bhavcopy", "get_nse_commodities_bhavcopy"
+    "get_currency_bhavcopy", "get_nse_commodities_bhavcopy",
+    "get_mcx_bhavcopy"
 ]
 
 for method in TABULAR_METHODS:

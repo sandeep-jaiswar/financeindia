@@ -31,13 +31,3 @@ pub async fn nse_live_commodities_market(client: &Client) -> FinanceResult<Bytes
     )
     .await
 }
-
-/// Fetch MCX Bhavcopy.
-pub async fn mcx_bhavcopy(client: &Client, date: &str) -> FinanceResult<Bytes> {
-    let d = parse_date_robust(date)?;
-    let url = format!(
-        "https://www.mcxindia.com/en/bhavcopy/bhavcopy.aspx?date={}",
-        d.format("%d/%m/%Y")
-    );
-    fetch_bytes(client, &url, None).await
-}
