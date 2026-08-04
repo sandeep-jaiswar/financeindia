@@ -172,6 +172,10 @@
 **Vulnerability:** In `src/common.rs`, `fetch_bytes` relied on `reqwest::Response::bytes()` to load the entire HTTP response body into memory when the server provided a `Content-Length` header. A malicious or compromised server could return a small `Content-Length` but stream an infinite amount of data, bypassing the length check and causing an unbounded memory allocation (Out-Of-Memory / DoS).
 **Learning:** Checking the `Content-Length` header is insufficient for enforcing maximum response sizes because `reqwest` does not limit the body stream length to the declared `Content-Length`. Attackers can exploit this to perform OOM DoS attacks.
 **Prevention:** Always use `bytes_stream()` to read response bodies in chunks, dynamically tracking the accumulated size and enforcing the maximum size limit regardless of the presence or value of a `Content-Length` header.
+## 2025-05-24 - Enforce HTTPS-Only globally in HTTP Client
+**Vulnerability:** The HTTP client was configured without enforcing HTTPS globally, leaving a risk of accidental HTTP usage or protocol downgrade attacks.
+**Learning:** For a library that interacts with external APIs like NSE, connections should strictly be HTTPS to protect against MitM attacks.
+**Prevention:** Always enforce HTTPS using `.https_only(true)` (or conditionally for tests) on the `reqwest::ClientBuilder`.
 ## 2025-05-24 - [Fix HTTP Downgrade Vulnerability]
 **Vulnerability:** The HTTP client configured in `src/common.rs` via `reqwest::ClientBuilder` was missing the `.https_only(true)` enforcement, exposing the application to HTTP downgrade and Man-in-the-Middle (MitM) attacks if a non-HTTPS URL were requested.
 **Learning:** Security configurations like `.https_only(true)` must be explicitly applied in the core HTTP client builder to enforce encryption across the entire library.
