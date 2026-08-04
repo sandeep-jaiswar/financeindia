@@ -13,12 +13,12 @@ pub async fn bhav_copy_derivatives(
     segment: &str,
 ) -> FinanceResult<Bytes> {
     let d = parse_date_robust(date)?;
-    // Each arm carries both the URL path component and the archive prefix to avoid
-    // a runtime `.to_lowercase()` allocation on a known static value.
-    let (seg_lower, seg_upper) = match segment.to_uppercase().as_str() {
-        "FO" | "F&O" => ("fo", "FO"),
-        "CO" | "COMMODITY" => ("co", "CO"),
-        "CD" | "CURRENCY" => ("cd", "CD"),
+    // Each arm carries the archive base path and the segment code to avoid a
+    // runtime `.to_lowercase()` allocation on a known static value.
+    let (seg_base, seg_upper) = match segment.to_uppercase().as_str() {
+        "FO" | "F&O" => ("https://nsearchives.nseindia.com/content/fo", "FO"),
+        "CO" | "COMMODITY" => ("https://nsearchives.nseindia.com/content/com", "CO"),
+        "CD" | "CURRENCY" => ("https://nsearchives.nseindia.com/archives/cd/bhav", "CD"),
         _ => {
             return Err(FinanceError::Runtime(
                 "Invalid segment. Use FO, CO, or CD.".to_string(),
@@ -27,8 +27,8 @@ pub async fn bhav_copy_derivatives(
     };
 
     let url = format!(
-        "https://nsearchives.nseindia.com/content/{}/BhavCopy_NSE_{}_0_0_0_{}_F_0000.csv.zip",
-        seg_lower,
+        "{}/BhavCopy_NSE_{}_0_0_0_{}_F_0000.csv.zip",
+        seg_base,
         seg_upper,
         d.format("%Y%m%d")
     );
@@ -45,12 +45,45 @@ pub async fn bhav_copy_derivatives(
 /// Fetches the option chain for a given symbol.
 ///
 /// Set `is_index = true` for index option chains (e.g. NIFTY), `false` for equity chains.
+///
+/// Index chains use the current `option-chain-v3` endpoint, which requires an `expiry`
+/// parameter; the nearest expiry is resolved via `option-chain-contract-info`.
+/// Equity chains keep the `option-chain-equities` endpoint.
 pub async fn option_chain(client: &Client, symbol: &str, is_index: bool) -> FinanceResult<Bytes> {
-    let api_type = if is_index { "indices" } else { "equities" };
     let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
+
+    if !is_index {
+        let url = format!(
+            "https://www.nseindia.com/api/option-chain-equities?symbol={}",
+            encoded_symbol
+        );
+        return fetch_bytes(client, &url, Some("https://www.nseindia.com/option-chain")).await;
+    }
+
+    // Resolve the nearest expiry from the contract-info endpoint.
+    let contract_url = format!(
+        "https://www.nseindia.com/api/option-chain-contract-info?symbol={}",
+        encoded_symbol
+    );
+    let info_bytes = fetch_bytes(client, &contract_url, Some("https://www.nseindia.com/option-chain"))
+        .await?;
+    let info: serde_json::Value = serde_json::from_slice(&info_bytes)?;
+    let expiry = info
+        .get("expiryDates")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            FinanceError::Runtime(format!(
+                "No expiry dates found for index option chain: {}",
+                symbol
+            ))
+        })?;
+
     let url = format!(
-        "https://www.nseindia.com/api/option-chain-{}?symbol={}",
-        api_type, encoded_symbol
+        "https://www.nseindia.com/api/option-chain-v3?type=Indices&symbol={}&expiry={}",
+        encoded_symbol,
+        utf8_percent_encode(expiry, NON_ALPHANUMERIC)
     );
     fetch_bytes(client, &url, Some("https://www.nseindia.com/option-chain")).await
 }
