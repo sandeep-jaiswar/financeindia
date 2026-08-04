@@ -14,7 +14,7 @@ pub async fn all_indices(client: &Client) -> FinanceResult<Bytes> {
 pub async fn index_constituents(client: &Client, index: &str) -> FinanceResult<Bytes> {
     let encoded_index = utf8_percent_encode(index, NON_ALPHANUMERIC).to_string();
     let url = format!(
-        "https://www.nseindia.com/api/equity-stockIndices?index={}",
+        "https://www.nseindia.com/api/equity-stock-indices?index={}",
         encoded_index
     );
     fetch_bytes(client, &url, Some(crate::common::NSE_ALL_REPORTS_URL)).await

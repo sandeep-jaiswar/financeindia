@@ -96,7 +96,7 @@ pub async fn short_selling_data(
 
 /// Fetches advances and declines data.
 pub async fn advances_declines(client: &Client) -> FinanceResult<Bytes> {
-    let url = "https://www.nseindia.com/api/equity-stockIndices?index=ALL%20INDICES";
+    let url = "https://www.nseindia.com/api/equity-stock-indices?index=ALL%20INDICES";
     fetch_bytes(
         client,
         url,

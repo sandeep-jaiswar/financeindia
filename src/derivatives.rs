@@ -57,7 +57,7 @@ pub async fn option_chain(client: &Client, symbol: &str, is_index: bool) -> Fina
 
 /// Fetches the live F&O security ban list.
 pub async fn fo_sec_ban(client: &Client) -> FinanceResult<Bytes> {
-    let url = "https://www.nseindia.com/api/equity-stockIndices?index=SECURITIES%20IN%20F%26O%20BAN%20PERIOD";
+    let url = "https://www.nseindia.com/api/equity-stock-indices?index=SECURITIES%20IN%20F%26O%20BAN%20PERIOD";
     fetch_bytes(
         client,
         url,

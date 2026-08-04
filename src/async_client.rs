@@ -145,7 +145,7 @@ impl AsyncFinanceClient {
             let csv_str =
                 crate::equities::price_volume_data(&client, &symbol, &from_date, &to_date).await?;
             Python::with_gil(|py| {
-                crate::common::parse_csv_to_py_typed::<crate::models::PriceVolumeRow>(py, &csv_str)
+                crate::common::parse_price_volume_csv_to_py(py, &csv_str)
             })
         })
     }

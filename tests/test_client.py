@@ -29,6 +29,14 @@ def test_equity_list(client):
     data = client.get_equity_list()
     assert len(data) > 0
 
+def test_price_volume_data(client):
+    data = client.price_volume_data("RELIANCE", "01-03-2026", "05-03-2026")
+    assert len(data) > 0
+    row = data[0]
+    assert row.symbol == "RELIANCE"
+    assert row.close_price is not None
+    assert isinstance(row.close_price, float)
+
 def test_equity_data_endpoints(client):
     # Test a few core equity data endpoints
     assert client.get_equity_quote("RELIANCE") is not None
