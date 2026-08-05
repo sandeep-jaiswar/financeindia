@@ -34,6 +34,10 @@ Homepage = "https://github.com/sandeep-jaiswar/financeindia"
 Repository = "https://github.com/sandeep-jaiswar/financeindia"
 Issues = "https://github.com/sandeep-jaiswar/financeindia/issues"
 
+[project.optional-dependencies]
+mcx = ["curl_cffi"]
+polars = ["polars"]
+
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "financeindia.financeindia"

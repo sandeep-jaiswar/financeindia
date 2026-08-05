@@ -29,9 +29,18 @@ def test_equity_list(client):
     data = client.get_equity_list()
     assert len(data) > 0
 
+def test_price_volume_data(client):
+    data = client.price_volume_data("RELIANCE", "01-03-2026", "05-03-2026")
+    assert len(data) > 0
+    row = data[0]
+    assert row.symbol == "RELIANCE"
+    assert row.close_price is not None
+    assert isinstance(row.close_price, float)
+
 def test_equity_data_endpoints(client):
-    # Test a few core equity data endpoints
-    assert client.get_equity_quote("RELIANCE") is not None
+    # Test a few core equity data endpoints.
+    # Note: get_equity_quote is tested separately; it can be environment-dependent
+    # and may fail with HTTP 403 from datacenter IPs due to NSE/Akamai bot detection.
     assert client.get_most_active("NIFTY 50") is not None
     assert client.get_advances_declines() is not None
 
@@ -44,6 +53,42 @@ def test_indices_endpoints(client):
 def test_fo_sec_ban(client):
     data = client.get_fo_sec_ban()
     assert data is not None
+
+def test_live_currency_market(client):
+    data = client.get_live_currency_market()
+    assert data is not None
+    assert "data" in data
+
+def test_currency_bhavcopy(client):
+    data = client.get_currency_bhavcopy("30-07-2026")
+    assert isinstance(data, dict)
+    assert "TradDt" in data
+
+def test_live_commodities_market(client):
+    data = client.get_live_commodities_market()
+    assert data is not None
+    assert "marketStatus" in data
+
+def test_equity_quote(client):
+    quote = client.get_equity_quote("RELIANCE")
+    assert isinstance(quote, dict)
+    assert "tradeInfo" in quote
+    assert "priceInfo" in quote
+    assert quote["tradeInfo"]["lastPrice"] is not None
+
+def test_nse_commodities_bhavcopy(client):
+    data = client.get_nse_commodities_bhavcopy("30-07-2026")
+    assert isinstance(data, dict)
+    assert "TradDt" in data
+
+def test_mcx_bhavcopy(client):
+    data = client.get_mcx_bhavcopy("30-07-2026")
+    assert isinstance(data, list)
+    assert len(data) > 0
+    row = data[0]
+    assert isinstance(row, dict)
+    assert "Symbol" in row
+    assert "Close" in row
 
 @pytest.mark.parametrize("symbol,is_index", [
     ("RELIANCE", False),
@@ -66,12 +111,9 @@ def test_slb_endpoints(client):
 
 # Error Handling Exception Tests
 def test_missing_data_exception(client):
-    # Note: The NSE API returns a valid JSON response with error info for invalid tickers
-    # rather than raising an HTTP error. The response contains error details.
-    result = client.get_equity_quote("INVALID_TICKER_9999")
-    # Verify we get a response (not an exception) with error information
-    assert isinstance(result, dict)
-    assert "error" in result or "message" in result
+    # Invalid option chain symbol should surface as a DataError, not crash.
+    with pytest.raises(financeindia.FinanceError):
+        client.get_option_chain("INVALID_TICKER_9999", True)
 
 def test_market_stream_ssrf_protection():
     # Only wss/ws and valid domains should be accepted

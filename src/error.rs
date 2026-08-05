@@ -103,11 +103,6 @@ pub fn rate_limited_error(retry_after: Option<u64>) -> FinanceError {
     FinanceError::RateLimited(retry_after)
 }
 
-// Helper to create validation errors
-pub fn validation_error(msg: impl Into<String>) -> FinanceError {
-    FinanceError::Validation(msg.into())
-}
-
 // Helper to create network errors
 pub fn network_error(msg: impl Into<String>) -> FinanceError {
     FinanceError::Network(msg.into())

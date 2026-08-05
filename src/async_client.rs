@@ -145,7 +145,7 @@ impl AsyncFinanceClient {
             let csv_str =
                 crate::equities::price_volume_data(&client, &symbol, &from_date, &to_date).await?;
             Python::with_gil(|py| {
-                crate::common::parse_csv_to_py_typed::<crate::models::PriceVolumeRow>(py, &csv_str)
+                crate::common::parse_price_volume_csv_to_py(py, &csv_str)
             })
         })
     }
@@ -805,13 +805,6 @@ impl AsyncFinanceClient {
         dispatch_async!(self, py, client, {
             let csv_str = crate::commodities::nse_commodities_bhavcopy(&client, &date).await?;
             Python::with_gil(|py| crate::common::parse_csv_to_py(py, &csv_str))
-        })
-    }
-
-    fn get_mcx_bhavcopy<'py>(&self, py: Python<'py>, date: String) -> PyResult<Bound<'py, PyAny>> {
-        dispatch_async!(self, py, client, {
-            let bytes = crate::commodities::mcx_bhavcopy(&client, &date).await?;
-            Python::with_gil(|py| Ok(pyo3::types::PyBytes::new(py, &bytes).into_any().unbind()))
         })
     }
 }

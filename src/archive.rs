@@ -32,9 +32,9 @@ impl BhavArchive {
         let path = Path::new(&output_path);
         for component in path.components() {
             match component {
-                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                Component::ParentDir | Component::Prefix(_) => {
                     return Err(pyo3::exceptions::PyValueError::new_err(
-                        "Invalid output path: Path traversal or absolute paths are not allowed.",
+                        "Invalid output path: Path traversal (`..`) is not allowed.",
                     ));
                 }
                 _ => {}
@@ -55,19 +55,38 @@ impl BhavArchive {
                             ));
                         }
                     }
+
+                    // Resolve the parent directory (defaulting to CWD when the path has
+                    // no explicit parent) so that relative paths are anchored and any
+                    // symlinked parents are resolved before writing.
+                    let parent = match path.parent() {
+                        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+                        _ => std::path::PathBuf::from("."),
+                    };
+                    let canonical_parent = parent.canonicalize().map_err(|e| {
+                        FinanceError::PyErr(pyo3::exceptions::PyValueError::new_err(format!(
+                            "Invalid output path: parent directory does not exist: {}",
+                            e
+                        )))
+                    })?;
+
                     let base = env::current_dir().map_err(FinanceError::Io)?;
-                    if let Some(parent) = path.parent() {
-                        let canonical_parent = parent.canonicalize().map_err(FinanceError::Io)?;
-                        if !canonical_parent.starts_with(&base) {
-                            return Err(FinanceError::PyErr(
-                                pyo3::exceptions::PyValueError::new_err(
-                                    "Invalid output path: Path resolves outside allowed directory.",
-                                ),
-                            ));
-                        }
+                    if !path.is_absolute() && !canonical_parent.starts_with(&base) {
+                        return Err(FinanceError::PyErr(
+                            pyo3::exceptions::PyValueError::new_err(
+                                "Invalid output path: Path resolves outside allowed directory.",
+                            ),
+                        ));
                     }
 
-                    let file = File::create(path).map_err(FinanceError::Io)?;
+                    let file_name = path.file_name().ok_or_else(|| {
+                        FinanceError::PyErr(pyo3::exceptions::PyValueError::new_err(
+                            "Invalid output path: must name a file.",
+                        ))
+                    })?;
+                    let final_path = canonical_parent.join(file_name);
+
+                    let file = File::create(&final_path).map_err(FinanceError::Io)?;
                     let mut zip = zip::ZipWriter::new(file);
                     let options: FileOptions<'_, ()> = FileOptions::default()
                         .compression_method(zip::CompressionMethod::Stored)

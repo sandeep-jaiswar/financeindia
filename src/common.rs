@@ -318,6 +318,58 @@ where
     Ok(list.into_any().unbind())
 }
 
+/// Parses an optional numeric CSV field (`None` for missing/empty/`-`).
+fn parse_csv_f64_opt(field: Option<&str>) -> Option<f64> {
+    let cleaned = field?.replace(',', "").trim().to_string();
+    if cleaned.is_empty() || cleaned == "-" {
+        None
+    } else {
+        cleaned.parse::<f64>().ok()
+    }
+}
+
+fn parse_csv_str_opt(field: Option<&str>) -> Option<String> {
+    field.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// Parses NSE security-wise historical data CSV into `PriceVolumeRow` objects.
+///
+/// NSE returns headers like `"Symbol  ","Prev Close  ",...` (title case with trailing
+/// spaces and a `₹` marker), so rows are parsed positionally to stay robust against
+/// header drift instead of relying on exact header-name matching.
+pub fn parse_price_volume_csv_to_py(
+    py: Python<'_>,
+    csv_bytes: &[u8],
+) -> PyResult<PyObject> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .flexible(true)
+        .from_reader(csv_bytes);
+
+    let list = pyo3::types::PyList::empty(py);
+    for result in reader.records() {
+        let record = result.map_err(|e| PyErr::from(FinanceError::Csv(e)))?;
+        let row = crate::models::PriceVolumeRow {
+            symbol: parse_csv_str_opt(record.get(0)),
+            series: parse_csv_str_opt(record.get(1)),
+            date: parse_csv_str_opt(record.get(2)),
+            prev_close: parse_csv_f64_opt(record.get(3)),
+            open_price: parse_csv_f64_opt(record.get(4)),
+            high_price: parse_csv_f64_opt(record.get(5)),
+            low_price: parse_csv_f64_opt(record.get(6)),
+            last_price: parse_csv_f64_opt(record.get(7)),
+            close_price: parse_csv_f64_opt(record.get(8)),
+            average_price: parse_csv_f64_opt(record.get(9)),
+            total_traded_quantity: parse_csv_f64_opt(record.get(10)),
+            turnover: parse_csv_f64_opt(record.get(11)),
+            no_of_trades: parse_csv_f64_opt(record.get(12)),
+        };
+        list.append(row.into_bound_py_any(py)?)?;
+    }
+
+    Ok(list.into_any().unbind())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
