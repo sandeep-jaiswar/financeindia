@@ -43,7 +43,8 @@ def _mcx_sync(client_self, date, instrument="ALL"):
 
 async def _mcx_async(client_self, date, instrument="ALL"):
     import asyncio
-    return await asyncio.to_thread(_mcx.fetch_mcx_bhavcopy, date, instrument)
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _mcx.fetch_mcx_bhavcopy, date, instrument)
 
 
 FinanceClient.get_mcx_bhavcopy = _mcx_sync

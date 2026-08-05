@@ -39,8 +39,8 @@ def test_price_volume_data(client):
 
 def test_equity_data_endpoints(client):
     # Test a few core equity data endpoints.
-    # get_equity_quote is excluded: NSE blocks it via Akamai (HTTP 403)
-    # from datacenter IPs regardless of headers/session.
+    # Note: get_equity_quote is tested separately; it can be environment-dependent
+    # and may fail with HTTP 403 from datacenter IPs due to NSE/Akamai bot detection.
     assert client.get_most_active("NIFTY 50") is not None
     assert client.get_advances_declines() is not None
 
