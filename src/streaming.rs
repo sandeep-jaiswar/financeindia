@@ -18,10 +18,20 @@ impl MarketStream {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid URL: {}", e)))?;
 
         let scheme = parsed_url.scheme();
-        if scheme != "ws" && scheme != "wss" {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "Invalid URL scheme. Only 'ws' and 'wss' are allowed for streaming.",
-            ));
+        let is_test = std::env::var("FINANCEINDIA_TEST_ENV").as_deref() == Ok("1");
+
+        if is_test {
+            if scheme != "ws" && scheme != "wss" {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Invalid URL scheme. Only 'ws' and 'wss' are allowed for streaming.",
+                ));
+            }
+        } else {
+            if scheme != "wss" {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Invalid URL scheme. Only 'wss' (secure) is allowed for streaming.",
+                ));
+            }
         }
 
         let host = parsed_url

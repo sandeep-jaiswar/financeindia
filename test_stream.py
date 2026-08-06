@@ -4,7 +4,7 @@ import pytest
 def test_market_stream_ssrf():
     # Valid domains
     financeindia.MarketStream("wss://nseindia.com/stream")
-    financeindia.MarketStream("ws://www.mcxindia.com/stream")
+    financeindia.MarketStream("wss://www.mcxindia.com/stream")
 
     # Invalid scheme
     with pytest.raises(ValueError):
