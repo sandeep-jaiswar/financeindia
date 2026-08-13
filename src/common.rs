@@ -200,8 +200,10 @@ pub async fn fetch_bytes(
                                 "Error reading body from {} on attempt {}: {}",
                                 url, attempt, e
                             );
-                            sleep(with_jitter(delay)).await;
-                            delay = (delay * 2).min(MAX_BACKOFF);
+                            if attempt < MAX_RETRIES {
+                                sleep(with_jitter(delay)).await;
+                                delay = (delay * 2).min(MAX_BACKOFF);
+                            }
                             continue;
                         }
 
@@ -216,8 +218,10 @@ pub async fn fetch_bytes(
                             format!("HTTP error {} for {} on attempt {}", status, url, attempt);
                         if e.status().map(|s| s.is_server_error()).unwrap_or(false) {
                             // Server error - retry with jitter
-                            sleep(with_jitter(delay)).await;
-                            delay = (delay * 2).min(MAX_BACKOFF);
+                            if attempt < MAX_RETRIES {
+                                sleep(with_jitter(delay)).await;
+                                delay = (delay * 2).min(MAX_BACKOFF);
+                            }
                         } else if let Some(status_code) = e.status() {
                             // Client error (4xx except 429, handled above)
                             return Err(error::status_code_error(
@@ -238,8 +242,10 @@ pub async fn fetch_bytes(
                 } else if e.is_connect() {
                     return Err(FinanceError::Network(format!("Connection refused: {}", e)));
                 }
-                sleep(with_jitter(delay)).await;
-                delay = (delay * 2).min(MAX_BACKOFF);
+                if attempt < MAX_RETRIES {
+                    sleep(with_jitter(delay)).await;
+                    delay = (delay * 2).min(MAX_BACKOFF);
+                }
             }
         }
     }

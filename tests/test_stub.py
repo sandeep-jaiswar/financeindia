@@ -71,7 +71,7 @@ def test_stub_annotations_match_rust_models():
 
 def test_stub_exports_error_classes():
     stub = STUB_PATH.read_text(encoding="utf-8")
-    for cls in [
+    exception_classes = [
         "FinanceException",
         "HTTPError",
         "ConnectionError",
@@ -85,6 +85,18 @@ def test_stub_exports_error_classes():
         "ValidationError",
         "NetworkError",
         "UnknownError",
-    ]:
+    ]
+    # Verify stub coverage
+    for cls in exception_classes:
         assert f"class {cls}" in stub, f"stub is missing exception class {cls}"
     assert "FinanceError = FinanceException" in stub
+
+    # Verify runtime module exposes all exception classes
+    for cls in exception_classes:
+        assert hasattr(financeindia, cls), f"runtime module is missing exception class {cls}"
+        assert isinstance(getattr(financeindia, cls), type), f"{cls} should be a class"
+
+    # Verify FinanceError is the identical object as FinanceException
+    assert hasattr(financeindia, "FinanceError"), "runtime module is missing FinanceError alias"
+    assert financeindia.FinanceError is financeindia.FinanceException, \
+        "FinanceError should be the same object as FinanceException"

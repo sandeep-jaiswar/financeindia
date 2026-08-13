@@ -123,9 +123,12 @@ def test_missing_data_exception(client):
     with pytest.raises(financeindia.FinanceError):
         client.get_option_chain("INVALID_TICKER_9999", True)
 
-def test_market_stream_ssrf_protection():
+def test_market_stream_ssrf_protection(monkeypatch):
     # Only wss (and ws in the FINANCEINDIA_TEST_ENV=1 test mode) and valid
     # domains should be accepted.
+
+    # Ensure test environment variable is not set to guarantee ws:// is rejected
+    monkeypatch.delenv("FINANCEINDIA_TEST_ENV", raising=False)
 
     # Invalid schemes - code raises ValueError (not RuntimeError as originally expected)
     with pytest.raises(ValueError, match="Invalid URL scheme"):
