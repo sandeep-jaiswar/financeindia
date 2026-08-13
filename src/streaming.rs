@@ -109,7 +109,7 @@ impl MarketStream {
                     }
                     Ok::<(), FinanceError>(())
                 })
-                .map_err(PyErr::from)
+                .map_err(|e| Python::with_gil(|_| PyErr::from(e)))
         })
     }
 }

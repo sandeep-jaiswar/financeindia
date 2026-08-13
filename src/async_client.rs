@@ -54,9 +54,11 @@ macro_rules! dispatch_async {
         let refresh_lock = $self.last_refresh.clone();
         future_into_py($py, async move {
             let $client = &$client;
+            // The future runs on a Tokio worker thread WITHOUT the GIL, so any
+            // FinanceError -> PyErr conversion must happen under `with_gil`.
             Self::_refresh_session_async($client, &refresh_lock)
                 .await
-                .map_err(PyErr::from)?;
+                .map_err(|e| Python::with_gil(|_| PyErr::from(e)))?;
             $body
         })
     }};
@@ -212,9 +214,7 @@ impl AsyncFinanceClient {
     fn get_equity_list<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         dispatch_async!(self, py, client, {
             let csv_str = crate::equities::equity_list(client).await?;
-            Python::with_gil(|py| {
-                crate::common::parse_csv_to_py_typed::<crate::models::EquityInfo>(py, &csv_str)
-            })
+            Python::with_gil(|py| crate::common::parse_equity_list_csv_to_py(py, &csv_str))
         })
     }
 

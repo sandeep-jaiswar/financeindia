@@ -14,9 +14,11 @@ pub const NSE_ALL_REPORTS_URL: &str = "https://www.nseindia.com/all-reports";
 pub const NSE_DATE_FMT: &str = "%d-%m-%Y";
 pub const SESSION_REFRESH_INTERVAL: Duration = Duration::from_secs(900);
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const MAX_RESPONSE_SIZE: usize = 50 * 1024 * 1024;
 pub const MAX_DECOMPRESSED_ENTRY_SIZE: u64 = 50 * 1024 * 1024;
 const MAX_RETRIES: u32 = 3;
+const MAX_BACKOFF: Duration = Duration::from_secs(8);
 
 fn is_trusted_redirect_host(host: &str) -> bool {
     (host.ends_with(".nseindia.com") || host == "nseindia.com")
@@ -76,7 +78,8 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
         .default_headers(headers)
         .cookie_store(true)
         .redirect(redirect_policy)
-        .timeout(DEFAULT_TIMEOUT);
+        .timeout(DEFAULT_TIMEOUT)
+        .connect_timeout(DEFAULT_CONNECT_TIMEOUT);
 
     if std::env::var("FINANCEINDIA_TEST_ENV").as_deref() != Ok("1") {
         builder = builder.https_only(true);
@@ -108,6 +111,29 @@ pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
     )))
 }
 
+/// Adds 0..=20% randomized jitter to a delay so concurrent retries don't
+/// line up in lockstep and hammer the exchange.
+fn with_jitter(delay: Duration) -> Duration {
+    let base_ms = delay.as_millis() as u64;
+    let jitter_ms = ((base_ms as f64) * 0.2) as u64;
+    let r = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| (d.subsec_nanos() as u64) % 1000)
+        .unwrap_or(0);
+    Duration::from_millis(base_ms + (jitter_ms as u128 * r as u128 / 1000) as u64)
+}
+
+/// Reads the `Retry-After` header (in seconds) from a rate-limited response.
+fn retry_after_secs(resp: &reqwest::Response) -> Option<u64> {
+    resp.headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+}
+
 pub async fn fetch_bytes(
     client: &Client,
     url: &str,
@@ -123,85 +149,88 @@ pub async fn fetch_bytes(
         }
 
         match rb.send().await {
-            Ok(resp) => match resp.error_for_status() {
-                Ok(checked) => {
-                    if let Some(len) = checked.content_length() {
-                        if len > MAX_RESPONSE_SIZE as u64 {
-                            return Err(FinanceError::Runtime(format!(
-                                "Response from {} exceeded {} MB limit",
-                                url,
-                                MAX_RESPONSE_SIZE / (1024 * 1024)
-                            )));
-                        }
-                    }
-
-                    let mut buf = Vec::new();
-                    use futures_util::StreamExt;
-                    let mut stream = checked.bytes_stream();
-                    let mut accumulated_size = 0;
-                    let mut stream_error = None;
-
-                    while let Some(chunk_res) = stream.next().await {
-                        match chunk_res {
-                            Ok(chunk) => {
-                                accumulated_size += chunk.len();
-                                if accumulated_size > MAX_RESPONSE_SIZE {
-                                    return Err(FinanceError::Runtime(format!(
-                                        "Response from {} exceeded {} MB limit",
-                                        url,
-                                        MAX_RESPONSE_SIZE / (1024 * 1024)
-                                    )));
-                                }
-                                buf.extend_from_slice(&chunk);
-                            }
-                            Err(e) => {
-                                stream_error = Some(FinanceError::Runtime(format!(
-                                    "Chunk stream error from {}: {}",
-                                    url, e
+            Ok(resp) => {
+                // Honor Retry-After instead of discarding it.
+                if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    return Err(error::rate_limited_error(retry_after_secs(&resp)));
+                }
+                match resp.error_for_status() {
+                    Ok(checked) => {
+                        if let Some(len) = checked.content_length() {
+                            if len > MAX_RESPONSE_SIZE as u64 {
+                                return Err(FinanceError::Runtime(format!(
+                                    "Response from {} exceeded {} MB limit",
+                                    url,
+                                    MAX_RESPONSE_SIZE / (1024 * 1024)
                                 )));
-                                break;
                             }
                         }
-                    }
 
-                    if let Some(e) = stream_error {
-                        last_error = format!(
-                            "Error reading body from {} on attempt {}: {}",
-                            url, attempt, e
-                        );
-                        sleep(delay).await;
-                        delay *= 2;
-                        continue;
-                    }
+                        let mut buf = Vec::new();
+                        use futures_util::StreamExt;
+                        let mut stream = checked.bytes_stream();
+                        let mut accumulated_size = 0;
+                        let mut stream_error = None;
 
-                    return Ok(Bytes::from(buf));
-                }
-                Err(e) => {
-                    let status = e
-                        .status()
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "Unknown".to_string());
-                    last_error =
-                        format!("HTTP error {} for {} on attempt {}", status, url, attempt);
-                    if e.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS) {
-                        // Rate limited
-                        return Err(error::rate_limited_error(None));
-                    } else if e.status().map(|s| s.is_server_error()).unwrap_or(false) {
-                        // Server error - retry
-                        sleep(delay).await;
-                        delay *= 2;
-                    } else if let Some(status_code) = e.status() {
-                        // Client error (4xx except 429)
-                        return Err(error::status_code_error(
-                            status_code.as_u16(),
-                            e.to_string(),
-                        ));
-                    } else {
-                        // No status code - likely connection error
-                        return Err(error::network_error(e.to_string()));
+                        while let Some(chunk_res) = stream.next().await {
+                            match chunk_res {
+                                Ok(chunk) => {
+                                    accumulated_size += chunk.len();
+                                    if accumulated_size > MAX_RESPONSE_SIZE {
+                                        return Err(FinanceError::Runtime(format!(
+                                            "Response from {} exceeded {} MB limit",
+                                            url,
+                                            MAX_RESPONSE_SIZE / (1024 * 1024)
+                                        )));
+                                    }
+                                    buf.extend_from_slice(&chunk);
+                                }
+                                Err(e) => {
+                                    stream_error = Some(FinanceError::Runtime(format!(
+                                        "Chunk stream error from {}: {}",
+                                        url, e
+                                    )));
+                                    break;
+                                }
+                            }
+                        }
+
+                        if let Some(e) = stream_error {
+                            last_error = format!(
+                                "Error reading body from {} on attempt {}: {}",
+                                url, attempt, e
+                            );
+                            sleep(with_jitter(delay)).await;
+                            delay = (delay * 2).min(MAX_BACKOFF);
+                            continue;
+                        }
+
+                        return Ok(Bytes::from(buf));
+                    }
+                    Err(e) => {
+                        let status = e
+                            .status()
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "Unknown".to_string());
+                        last_error =
+                            format!("HTTP error {} for {} on attempt {}", status, url, attempt);
+                        if e.status().map(|s| s.is_server_error()).unwrap_or(false) {
+                            // Server error - retry with jitter
+                            sleep(with_jitter(delay)).await;
+                            delay = (delay * 2).min(MAX_BACKOFF);
+                        } else if let Some(status_code) = e.status() {
+                            // Client error (4xx except 429, handled above)
+                            return Err(error::status_code_error(
+                                status_code.as_u16(),
+                                e.to_string(),
+                            ));
+                        } else {
+                            // No status code - likely connection error
+                            return Err(error::network_error(e.to_string()));
+                        }
                     }
                 }
-            },
+            }
             Err(e) => {
                 last_error = format!("Network error for {} on attempt {}: {}", url, attempt, e);
                 if e.is_timeout() {
@@ -209,8 +238,8 @@ pub async fn fetch_bytes(
                 } else if e.is_connect() {
                     return Err(FinanceError::Network(format!("Connection refused: {}", e)));
                 }
-                sleep(delay).await;
-                delay *= 2;
+                sleep(with_jitter(delay)).await;
+                delay = (delay * 2).min(MAX_BACKOFF);
             }
         }
     }
@@ -300,24 +329,6 @@ where
     Ok(value.into_bound_py_any(py)?.unbind())
 }
 
-pub fn parse_csv_to_py_typed<'py, T>(py: Python<'py>, csv_bytes: &[u8]) -> PyResult<PyObject>
-where
-    T: for<'de> serde::Deserialize<'de> + IntoPyObject<'py>,
-{
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .flexible(true)
-        .from_reader(csv_bytes);
-
-    let list = pyo3::types::PyList::empty(py);
-    for result in reader.deserialize() {
-        let record: T = result.map_err(|e| PyErr::from(FinanceError::Csv(e)))?;
-        list.append(record.into_bound_py_any(py)?)?;
-    }
-
-    Ok(list.into_any().unbind())
-}
-
 /// Parses an optional numeric CSV field (`None` for missing/empty/`-`).
 fn parse_csv_f64_opt(field: Option<&str>) -> Option<f64> {
     let cleaned = field?.replace(',', "").trim().to_string();
@@ -325,6 +336,20 @@ fn parse_csv_f64_opt(field: Option<&str>) -> Option<f64> {
         None
     } else {
         cleaned.parse::<f64>().ok()
+    }
+}
+
+/// Parses an optional integer CSV field, tolerating floats with a `.0` suffix
+/// (e.g. `"12345.0"`) that NSE occasionally emits for quantity/count columns.
+fn parse_csv_i64_opt(field: Option<&str>) -> Option<i64> {
+    let cleaned = field?.replace(',', "").trim().to_string();
+    if cleaned.is_empty() || cleaned == "-" {
+        None
+    } else {
+        cleaned
+            .parse::<i64>()
+            .ok()
+            .or_else(|| cleaned.parse::<f64>().ok().map(|f| f as i64))
     }
 }
 
@@ -360,9 +385,40 @@ pub fn parse_price_volume_csv_to_py(
             last_price: parse_csv_f64_opt(record.get(7)),
             close_price: parse_csv_f64_opt(record.get(8)),
             average_price: parse_csv_f64_opt(record.get(9)),
-            total_traded_quantity: parse_csv_f64_opt(record.get(10)),
+            total_traded_quantity: parse_csv_i64_opt(record.get(10)),
             turnover: parse_csv_f64_opt(record.get(11)),
-            no_of_trades: parse_csv_f64_opt(record.get(12)),
+            no_of_trades: parse_csv_i64_opt(record.get(12)),
+        };
+        list.append(row.into_bound_py_any(py)?)?;
+    }
+
+    Ok(list.into_any().unbind())
+}
+
+/// Parses the NSE equity master (`EQUITY_L.csv`) into `EquityInfo` objects.
+///
+/// The file's headers are GARBAGE for serde (`"NAME OF COMPANY"`, `"DATE OF
+/// LISTING"`, `"PAID UP VALUE"`, `"MARKET LOT"`, `"FACE VALUE"` don't match the
+/// `EquityInfo` renames), so rows are parsed positionally to keep the schema
+/// robust against header drift.
+pub fn parse_equity_list_csv_to_py(py: Python<'_>, csv_bytes: &[u8]) -> PyResult<PyObject> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .flexible(true)
+        .from_reader(csv_bytes);
+
+    let list = pyo3::types::PyList::empty(py);
+    for result in reader.records() {
+        let record = result.map_err(|e| PyErr::from(FinanceError::Csv(e)))?;
+        let row = crate::models::EquityInfo {
+            symbol: parse_csv_str_opt(record.get(0)),
+            company_name: parse_csv_str_opt(record.get(1)),
+            series: parse_csv_str_opt(record.get(2)),
+            listing_date: parse_csv_str_opt(record.get(3)),
+            paid_up_value: parse_csv_f64_opt(record.get(4)),
+            market_lot: parse_csv_str_opt(record.get(5)),
+            isin: parse_csv_str_opt(record.get(6)),
+            face_value: parse_csv_f64_opt(record.get(7)),
         };
         list.append(row.into_bound_py_any(py)?)?;
     }
@@ -483,6 +539,52 @@ mod tests {
                 std::env::remove_var("FINANCEINDIA_TEST_ENV");
             }
         }
+    }
+
+    #[test]
+    fn test_parse_csv_f64_opt() {
+        assert_eq!(parse_csv_f64_opt(None), None);
+        assert_eq!(parse_csv_f64_opt(Some("")), None);
+        assert_eq!(parse_csv_f64_opt(Some("-")), None);
+        assert_eq!(parse_csv_f64_opt(Some("1,234.50")), Some(1234.5));
+        assert_eq!(parse_csv_f64_opt(Some("42")), Some(42.0));
+    }
+
+    #[test]
+    fn test_parse_csv_i64_opt() {
+        assert_eq!(parse_csv_i64_opt(None), None);
+        assert_eq!(parse_csv_i64_opt(Some("")), None);
+        assert_eq!(parse_csv_i64_opt(Some("-")), None);
+        assert_eq!(parse_csv_i64_opt(Some("123456")), Some(123456));
+        assert_eq!(parse_csv_i64_opt(Some("123456.0")), Some(123456));
+        assert_eq!(parse_csv_i64_opt(Some("1,234,567")), Some(1234567));
+    }
+
+    #[test]
+    fn test_parse_csv_str_opt() {
+        assert_eq!(parse_csv_str_opt(None), None);
+        assert_eq!(parse_csv_str_opt(Some("")), None);
+        assert_eq!(parse_csv_str_opt(Some(" RELIANCE ")), Some("RELIANCE".to_string()));
+    }
+
+    #[test]
+    fn test_with_jitter_bounds() {
+        for i in 0..10u64 {
+            let base = Duration::from_millis(500 + i * 100);
+            let jittered = with_jitter(base);
+            let max = base + Duration::from_millis((base.as_millis() as f64 * 0.2) as u64);
+            assert!(jittered >= base, "jitter should never shrink the delay");
+            assert!(jittered <= max, "jitter should not exceed +20%");
+        }
+    }
+
+    #[test]
+    fn test_backoff_cap() {
+        let mut delay = Duration::from_millis(500);
+        for _ in 0..5 {
+            delay = (delay * 2).min(MAX_BACKOFF);
+        }
+        assert_eq!(delay, MAX_BACKOFF, "backoff must be capped at MAX_BACKOFF");
     }
 }
 

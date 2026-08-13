@@ -218,9 +218,7 @@ impl FinanceClient {
     /// Returns a list of all active equities listed on NSE.
     fn get_equity_list(&self, py: Python<'_>) -> PyResult<PyObject> {
         let csv_str = fetch_py!(self, py, equities::equity_list)?;
-        Ok(common::parse_csv_to_py_typed::<models::EquityInfo>(
-            py, &csv_str,
-        )?)
+        Ok(common::parse_equity_list_csv_to_py(py, &csv_str)?)
     }
 
     /// Returns bulk deal data for a specific date range.
