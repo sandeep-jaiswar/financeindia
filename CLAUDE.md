@@ -79,3 +79,18 @@ git commit -m "WIP: something"  # invalid type
 Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`
 
 Hooks are in [.husky/](.husky/) and configured via [commitlint.config.js](commitlint.config.js).
+
+## Releasing (Semantic Versioning)
+
+Releases are automated by [release-please](https://github.com/googleapis/release-please)
+(`.github/workflows/release-please.yml`) plus the publish pipeline
+(`.github/workflows/publish.yml`):
+
+- Version source of truth is `Cargo.toml` (`pyproject.toml` reads it via
+  `dynamic = ["version"]`). **Never bump it by hand** — release-please does.
+- `.release-please-manifest.json` tracks the current released version.
+- Merge conventional-commit PRs to `main`; release-please opens a
+  `chore: release X.Y.Z` PR. Merging it creates the `vX.Y.Z` tag + GitHub
+  Release, which triggers `publish.yml` to build/publish wheels to PyPI.
+- Commit type → bump: `fix:` patch, `feat:` minor, `feat!`/`fix!`/`BREAKING CHANGE:` major.
+- To cut the first stable `0.1.0` baseline manually: `git tag v0.1.0 && git push origin v0.1.0`.
