@@ -1,0 +1,30 @@
+# Automated Semantic Versioning & Releasing.
+#
+# Watches conventional commits on `main` and maintains a "Release PR" that:
+#   - bumps the version in Cargo.toml / Cargo.lock,
+#   - updates CHANGELOG.md,
+#   - creates a `vX.Y.Z` git tag + GitHub Release when merged.
+#
+# The tag push then triggers `.github/workflows/publish.yml` to build and
+# publish the wheels to PyPI.
+
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: release-please-manifest.json
