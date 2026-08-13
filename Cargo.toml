@@ -2,6 +2,7 @@
 name = "financeindia"
 version = "0.1.0-alpha.5"
 edition = "2024"
+rust-version = "1.88"
 description = "A high-performance, lightweight Python library written in Rust for fetching Indian financial market data (NSE)."
 license = "MIT"
 homepage = "https://github.com/sandeep-jaiswar/financeindia"
@@ -9,11 +10,20 @@ repository = "https://github.com/sandeep-jaiswar/financeindia"
 
 [lib]
 name = "financeindia"
-crate-type = ["cdylib"]
+# rlib is required so `cargo test` can link the unit tests against libpython.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Enabled by maturin (see pyproject.toml) when building the wheel. Turns off
+# libpython linking so the `.so` can be dlopen'd by the interpreter. `cargo
+# test` / `cargo build` run WITHOUT this feature and link against libpython.
+extension-module = ["pyo3/extension-module"]
 
 [dependencies]
-# Use 0.23 for Python 3.13 support
-pyo3 = { version = "0.24", features = ["extension-module"] }
+# Default features are omitted so tests link against libpython. the
+# `extension-module` feature (coupled with `abi3-py38` for the wheel) is only
+# enabled by maturin, keeping `cargo test` working.
+pyo3 = { version = "0.24", features = ["abi3-py38"] }
 # Ensure cookies feature is enabled
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "cookies", "json", "gzip", "stream"] }
 chrono = "0.4"

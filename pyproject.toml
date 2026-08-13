@@ -39,6 +39,6 @@ mcx = ["curl_cffi"]
 polars = ["polars"]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+features = ["extension-module"]
 module-name = "financeindia.financeindia"
 python-packages = ["financeindia"]

@@ -12,15 +12,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build and install in development mode
 maturin develop
 
-# Run only the Python tests
+# Run only the offline Python tests
+pytest tests/test_stub.py
+
+# Run the full Python test suite (live NSE calls; reachability-dependent)
 pytest tests/
+
+# Run Rust unit tests (requires a local Python dev toolchain to link libpython)
+cargo test
 
 # Build release wheels
 maturin build --release
-
-# Run Rust tests (if any)
-cargo test
 ```
+
+Notes:
+- The crate is `cdylib + rlib`. `maturin` builds the wheel with the
+  `extension-module` feature (see `pyproject.toml`); `cargo test`/`cargo build`
+  run WITHOUT it and link against libpython, so Rust unit tests actually run.
+- Minimum supported Rust version is **1.88** (`rust-version` is set in `Cargo.toml`).
+- Wheels are built as `cp38-abi3`, matching the Python 3.8+ classifiers.
+- The Python `.pyi` stub at `financeindia/financeindia.pyi` is a
+  manually-maintained source of truth; `tests/test_stub.py` validates model
+  field annotations against `src/models.rs`.
 
 ## Architecture
 
@@ -39,8 +52,8 @@ The `fetch_py!` macro bridges async functions to the sync Python API by spawning
 ## Key Patterns
 
 - Methods return typed PyO3 objects (e.g., `MarketStatusResponse`, `EquityInfo`)
-- Session caching with automatic refresh (5-minute interval)
-- Zero-serialization: CSV data parsed directly into Python objects in Rust
+- Cookie warm-up: periodic fetch of NSE's all-reports page (15-minute interval); not a rate limiter
+- Direct CSV parsing: rows parsed straight into Python objects in Rust
 - Concurrent-safe with `RwLock` for session state
 
 ## Recent Security Work

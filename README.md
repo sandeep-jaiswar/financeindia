@@ -1,16 +1,25 @@
 # financeindia
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/Rust-2024-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.88+-orange.svg)](https://www.rust-lang.org/)
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 
 **financeindia** is a high-performance, lightweight Python library written in Rust for fetching Indian financial market data (NSE) with ease.
+
+> **Data & ToS disclaimer:** `financeindia` scrapes public NSE/MCX pages. NSE and
+> MCX can rate-limit or block clients at any time, and the optional MCX path
+> impersonates a browser TLS fingerprint to get past Akamai — which may violate
+> exchange terms of service. Use this library for personal/research use at your
+> own risk, keep request rates low, and do not build commercial redistributors
+> of exchange data on top of it.
 
 ## Why financeindia?
 
 - **Blazing Fast**: Powered by Rust, providing efficient data parsing and networking.
 - **Lightweight**: Minimal dependencies, focus on performance and reliability.
-- **Session Caching**: Intelligent session management to avoid redundant requests and minimize rate-limiting risk.
+- **Cookie warm-up**: The client periodically touches NSE's `all-reports` page to
+  keep Akamai-issued cookies fresh. It is NOT a rate limiter or a guarantee
+  against 429s — keep your own request pacing low.
 - **Comprehensive**: Access to equity lists, historical data, bhavcopies, indices, and real-time quotes.
 
 ## Installation
@@ -18,6 +27,9 @@
 ```bash
 pip install financeindia
 ```
+
+The wheel ships as `cp38-abi3` (one binary for Python 3.8+). Building from
+source requires Rust **1.88 or newer** (`edition = "2024"` + let-chains).
 
 ## Quickstart
 
@@ -110,7 +122,7 @@ if results:
 ### 📊 Commodities & MCX
 - `get_live_commodities_market()`: NSE commodity futures market watch.
 - `get_nse_commodities_bhavcopy(date)`: NSE Commodities bhavcopy.
-- `get_mcx_bhavcopy(date, instrument='ALL')`: MCX daily bhavcopy as a list of row dicts (futures & options). MCX's Akamai firewall requires the optional [`curl_cffi`](https://pypi.org/project/curl_cffi/) package — install with `pip install curl_cffi`.
+- `get_mcx_bhavcopy(date, instrument='ALL')`: MCX daily bhavcopy as a list of row dicts (futures & options). MCX's Akamai firewall requires the optional [`curl_cffi`](https://pypi.org/project/curl_cffi/) package — install with `pip install curl_cffi`. Note the TLS-impersonation caveat in the disclaimer above.
 
 ### 🏢 Corporate Actions
 - `get_corporate_actions()`: Latest dividends, bonuses, splits, etc.
@@ -121,7 +133,7 @@ if results:
 ## Performance Optimizations
 
 `financeindia` is built for high-scale quant pipelines:
-- **Zero-Serialization CSV**: CSV data is parsed directly into Python objects in Rust, bypassing heavy string allocations.
+- **Direct CSV Parsing**: CSV data is parsed into Python objects in Rust, without an intermediate Python-visible string round-trip.
 - **Concurrent-Safe**: Uses `RwLock` and optimized connection pooling for multi-threaded usage.
 - **Blazing Fast**: Up to 3x faster than traditional JSON-based wrappers.
 

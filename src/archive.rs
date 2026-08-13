@@ -145,7 +145,7 @@ impl BhavArchive {
 
                     Ok::<_, FinanceError>((success_count, failed_dates))
                 })
-                .map_err(PyErr::from)
+                .map_err(|e| Python::with_gil(|_| PyErr::from(e)))
         })
     }
 }

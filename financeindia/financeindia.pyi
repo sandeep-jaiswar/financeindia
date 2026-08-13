@@ -1,6 +1,26 @@
 from typing import List, Dict, Any, Optional, Union, Callable, Awaitable
 from types import TracebackType
 
+# NOTE: This stub is a manually-maintained source of truth for the idiomatic
+# public API. tests/test_stub.py validates the model field annotations here
+# against the Rust model definitions whenever you change either side.
+
+class FinanceException(RuntimeError): ...
+class HTTPError(FinanceException): ...
+class ConnectionError(HTTPError): ...
+class TimeoutError(HTTPError): ...
+class StatusCodeError(HTTPError): ...
+class RateLimitError(HTTPError): ...
+class DataError(FinanceException): ...
+class JSONParseError(DataError): ...
+class CSVParseError(DataError): ...
+class XMLParseError(DataError): ...
+class ValidationError(FinanceException): ...
+class NetworkError(FinanceException): ...
+class UnknownError(FinanceException): ...
+# Backwards-compatible alias for FinanceException
+FinanceError = FinanceException
+
 class FiiDiiActivity:
     buy_value: Optional[float]
     category: Optional[str]
@@ -18,7 +38,7 @@ class MarketStatusResponse:
     market_state: List[MarketStatus]
 
 class Holiday:
-    sr_no: int
+    sr_no: Optional[int]
     description: Optional[str]
     trading_date: Optional[str]
     week_day: Optional[str]
@@ -49,16 +69,16 @@ class PriceVolumeRow:
     symbol: Optional[str]
     series: Optional[str]
     date: Optional[str]
-    prev_close: Optional[str]
-    open_price: Optional[str]
-    high_price: Optional[str]
-    low_price: Optional[str]
-    last_price: Optional[str]
-    close_price: Optional[str]
-    average_price: Optional[str]
-    total_traded_quantity: Optional[str]
-    turnover: Optional[str]
-    no_of_trades: Optional[str]
+    prev_close: Optional[float]
+    open_price: Optional[float]
+    high_price: Optional[float]
+    low_price: Optional[float]
+    last_price: Optional[float]
+    close_price: Optional[float]
+    average_price: Optional[float]
+    total_traded_quantity: Optional[int]
+    turnover: Optional[float]
+    no_of_trades: Optional[int]
 
 class FinanceClient:
     def __init__(self) -> None: ...

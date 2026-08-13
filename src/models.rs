@@ -89,55 +89,35 @@ pub struct GSMStock {
 }
 
 #[pyclass(get_all)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct EquityInfo {
     pub symbol: Option<String>,
-    #[serde(rename = "companyName")]
     pub company_name: Option<String>,
     pub series: Option<String>,
-    #[serde(rename = "listingDate")]
     pub listing_date: Option<String>,
-    #[serde(rename = "paidUpValue")]
     pub paid_up_value: Option<f64>,
-    #[serde(rename = "marketLot")]
     pub market_lot: Option<String>,
     pub isin: Option<String>,
-    #[serde(rename = "faceValue")]
     pub face_value: Option<f64>,
 }
 
 #[pyclass(get_all)]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct PriceVolumeRow {
-    #[serde(rename = "SYMBOL")]
     pub symbol: Option<String>,
-    #[serde(rename = "SERIES")]
     pub series: Option<String>,
-    #[serde(rename = "DATE1")]
     pub date: Option<String>,
-    #[serde(rename = "PREV_CLOSE", deserialize_with = "deserialize_optional_f64")]
     pub prev_close: Option<f64>,
-    #[serde(rename = "OPEN_PRICE", deserialize_with = "deserialize_optional_f64")]
     pub open_price: Option<f64>,
-    #[serde(rename = "HIGH_PRICE", deserialize_with = "deserialize_optional_f64")]
     pub high_price: Option<f64>,
-    #[serde(rename = "LOW_PRICE", deserialize_with = "deserialize_optional_f64")]
     pub low_price: Option<f64>,
-    #[serde(rename = "LAST_PRICE", deserialize_with = "deserialize_optional_f64")]
     pub last_price: Option<f64>,
-    #[serde(rename = "CLOSE_PRICE", deserialize_with = "deserialize_optional_f64")]
     pub close_price: Option<f64>,
-    #[serde(rename = "AVG_PRICE", deserialize_with = "deserialize_optional_f64")]
     pub average_price: Option<f64>,
-    /// NSE returns trade quantities as floats (with `.0`) in some reports.
-    #[serde(rename = "TTL_TRD_QNTY", deserialize_with = "deserialize_optional_f64")]
-    pub total_traded_quantity: Option<f64>,
-    #[serde(
-        rename = "TURNOVER_LACS",
-        deserialize_with = "deserialize_optional_f64"
-    )]
+    /// NSE returns trade quantities as integers; kept as i64 to avoid
+    /// float precision loss above 2^53.
+    pub total_traded_quantity: Option<i64>,
     pub turnover: Option<f64>,
-    /// NSE returns trade counts as floats in some reports.
-    #[serde(rename = "NO_OF_TRADES", deserialize_with = "deserialize_optional_f64")]
-    pub no_of_trades: Option<f64>,
+    /// Trade counts are integers (NSE may emit a `.0` float suffix).
+    pub no_of_trades: Option<i64>,
 }

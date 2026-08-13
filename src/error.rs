@@ -33,8 +33,6 @@ pub enum FinanceError {
     Xml(#[from] quick_xml::Error),
     #[error("URL parse error: {0}")]
     UrlParse(#[from] url::ParseError),
-    #[error("Python callback error: {0}")]
-    Py(String),
     #[error("Python error: {0}")]
     PyErr(PyErr),
     #[error("Runtime error: {0}")]
@@ -77,7 +75,6 @@ impl From<FinanceError> for PyErr {
             FinanceError::UrlParse(e) => {
                 ValidationError::new_err(format!("URL parse error: {}", e))
             }
-            FinanceError::Py(s) => FinanceException::new_err(s),
             FinanceError::PyErr(e) => e,
             FinanceError::Runtime(s) => FinanceException::new_err(s),
             FinanceError::RateLimited(retry_after) => {

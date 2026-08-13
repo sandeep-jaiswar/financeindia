@@ -28,6 +28,11 @@ def test_top_gainers_losers(client):
 def test_equity_list(client):
     data = client.get_equity_list()
     assert len(data) > 0
+    # Regression: company_name/isin used to deserialize to None because serde
+    # renames never matched the real EQUITY_L.csv headers.
+    assert all(row.symbol is not None for row in data)
+    assert any(row.company_name is not None for row in data)
+    assert any(row.isin is not None for row in data)
 
 def test_price_volume_data(client):
     data = client.price_volume_data("RELIANCE", "01-03-2026", "05-03-2026")
@@ -36,6 +41,9 @@ def test_price_volume_data(client):
     assert row.symbol == "RELIANCE"
     assert row.close_price is not None
     assert isinstance(row.close_price, float)
+    # Quantity/count fields are integers, not floats.
+    assert row.total_traded_quantity is None or isinstance(row.total_traded_quantity, int)
+    assert row.no_of_trades is None or isinstance(row.no_of_trades, int)
 
 def test_equity_data_endpoints(client):
     # Test a few core equity data endpoints.
@@ -116,13 +124,17 @@ def test_missing_data_exception(client):
         client.get_option_chain("INVALID_TICKER_9999", True)
 
 def test_market_stream_ssrf_protection():
-    # Only wss/ws and valid domains should be accepted
+    # Only wss (and ws in the FINANCEINDIA_TEST_ENV=1 test mode) and valid
+    # domains should be accepted.
 
     # Invalid schemes - code raises ValueError (not RuntimeError as originally expected)
     with pytest.raises(ValueError, match="Invalid URL scheme"):
         financeindia.MarketStream("https://nseindia.com/stream")
     with pytest.raises(ValueError, match="Invalid URL scheme"):
         financeindia.MarketStream("http://nseindia.com/stream")
+    # Plain ws is rejected by default; only FINANCEINDIA_TEST_ENV=1 allows it.
+    with pytest.raises(ValueError, match="Invalid URL scheme"):
+        financeindia.MarketStream("ws://mcxindia.com/stream")
 
     # Invalid hosts - code raises ValueError
     with pytest.raises(ValueError, match="Invalid domain"):
@@ -139,7 +151,6 @@ def test_market_stream_ssrf_protection():
     assert stream2 is not None
     # Valid URLs
     financeindia.MarketStream("wss://stream.nseindia.com/market")
-    financeindia.MarketStream("ws://mcxindia.com/stream")
 
     # Invalid scheme - already covered above
     # Invalid host - already covered above
