@@ -65,8 +65,12 @@ pub async fn option_chain(client: &Client, symbol: &str, is_index: bool) -> Fina
         "https://www.nseindia.com/api/option-chain-contract-info?symbol={}",
         encoded_symbol
     );
-    let info_bytes = fetch_bytes(client, &contract_url, Some("https://www.nseindia.com/option-chain"))
-        .await?;
+    let info_bytes = fetch_bytes(
+        client,
+        &contract_url,
+        Some("https://www.nseindia.com/option-chain"),
+    )
+    .await?;
     let info: serde_json::Value = serde_json::from_slice(&info_bytes)?;
     let expiry = info
         .get("expiryDates")

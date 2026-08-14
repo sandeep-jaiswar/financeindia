@@ -1,6 +1,4 @@
-use crate::common::{
-    fetch_bytes, parse_date_robust, read_first_text_file_from_zip,
-};
+use crate::common::{fetch_bytes, parse_date_robust, read_first_text_file_from_zip};
 use crate::error::FinanceResult;
 use bytes::Bytes;
 use reqwest::Client;

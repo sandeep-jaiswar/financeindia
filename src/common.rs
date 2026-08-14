@@ -354,7 +354,9 @@ fn parse_csv_i64_opt(field: Option<&str>) -> Option<i64> {
 }
 
 fn parse_csv_str_opt(field: Option<&str>) -> Option<String> {
-    field.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    field
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Parses NSE security-wise historical data CSV into `PriceVolumeRow` objects.
@@ -362,10 +364,7 @@ fn parse_csv_str_opt(field: Option<&str>) -> Option<String> {
 /// NSE returns headers like `"Symbol  ","Prev Close  ",...` (title case with trailing
 /// spaces and a `₹` marker), so rows are parsed positionally to stay robust against
 /// header drift instead of relying on exact header-name matching.
-pub fn parse_price_volume_csv_to_py(
-    py: Python<'_>,
-    csv_bytes: &[u8],
-) -> PyResult<PyObject> {
+pub fn parse_price_volume_csv_to_py(py: Python<'_>, csv_bytes: &[u8]) -> PyResult<PyObject> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
         .flexible(true)
@@ -564,7 +563,10 @@ mod tests {
     fn test_parse_csv_str_opt() {
         assert_eq!(parse_csv_str_opt(None), None);
         assert_eq!(parse_csv_str_opt(Some("")), None);
-        assert_eq!(parse_csv_str_opt(Some(" RELIANCE ")), Some("RELIANCE".to_string()));
+        assert_eq!(
+            parse_csv_str_opt(Some(" RELIANCE ")),
+            Some("RELIANCE".to_string())
+        );
     }
 
     #[test]

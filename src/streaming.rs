@@ -68,9 +68,14 @@ impl MarketStream {
         py.allow_threads(|| {
             crate::runtime()
                 .block_on(async {
-                    let (mut ws_stream, _) = connect_async(&self.url)
-                        .await
-                        .map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                    let connect_future = connect_async(&self.url);
+                    let (mut ws_stream, _) =
+                        tokio::time::timeout(std::time::Duration::from_secs(15), connect_future)
+                            .await
+                            .map_err(|_| {
+                                FinanceError::Runtime("WebSocket connection timed out".to_string())
+                            })?
+                            .map_err(|e| FinanceError::Runtime(e.to_string()))?;
 
                     if let Some(msg) = subscribe_msg {
                         ws_stream
