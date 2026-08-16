@@ -69,13 +69,15 @@ impl MarketStream {
             crate::runtime()
                 .block_on(async {
                     let connect_future = connect_async(&self.url);
-                    let (mut ws_stream, _) =
-                        tokio::time::timeout(std::time::Duration::from_secs(15), connect_future)
-                            .await
-                            .map_err(|_| {
-                                FinanceError::Runtime("WebSocket connection timed out".to_string())
-                            })?
-                            .map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                    let (mut ws_stream, _) = tokio::time::timeout(
+                        crate::common::DEFAULT_CONNECT_TIMEOUT,
+                        connect_future,
+                    )
+                    .await
+                    .map_err(|_| {
+                        FinanceError::Runtime("WebSocket connection timed out".to_string())
+                    })?
+                    .map_err(|e| FinanceError::Runtime(e.to_string()))?;
 
                     if let Some(msg) = subscribe_msg {
                         ws_stream

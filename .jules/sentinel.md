@@ -1,4 +1,4 @@
-## 2024-08-14 - [MEDIUM] Fix WebSocket connection timeout
-**Vulnerability:** The `tokio_tungstenite::connect_async` call did not have a timeout configured, leading to potential indefinite hangs (Denial of Service risk) if the external WebSocket server accepted the TCP connection but stalled the TLS/handshake phase.
-**Learning:** External API connections natively established without HTTP clients (like `reqwest` which includes default timeouts) may lack built-in timeout logic, especially with underlying TCP/TLS stream futures.
-**Prevention:** Always wrap asynchronous connection futures (e.g., `connect_async`) with an explicit runtime timeout (like `tokio::time::timeout`) to ensure defensive programming and predictable error states.
+## 2025-02-18 - Fix missing timeout for WebSocket connection in MarketStream
+**Vulnerability:** The `tokio_tungstenite::connect_async` function does not have a built-in timeout. If the remote host is unresponsive during the TCP handshake or TLS negotiation, the async task can hang indefinitely, potentially leading to resource exhaustion (DoS) when many streams are created.
+**Learning:** In the absence of a request builder timeout (like `reqwest::ClientBuilder::timeout`), lower-level async network operations in `tokio` (like WebSocket connections) require explicit timeout wrapping via `tokio::time::timeout`.
+**Prevention:** Always wrap indefinite async I/O operations, especially connection handshakes, in `tokio::time::timeout` using a configured timeout duration (e.g., `DEFAULT_CONNECT_TIMEOUT`).
