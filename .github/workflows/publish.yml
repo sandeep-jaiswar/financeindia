@@ -55,6 +55,24 @@ jobs:
             sudo apt-get install -y gcc-powerpc64le-linux-gnu libc6-dev-ppc64el-cross
           fi
 
+      - name: Pre-install Rust target (retry on transient network errors)
+        shell: bash
+        run: |
+          case "${{ matrix.platform.target }}" in
+            x86_64)  TRIPLE="x86_64-unknown-linux-gnu" ;;
+            x86)     TRIPLE="i686-unknown-linux-gnu" ;;
+            aarch64) TRIPLE="aarch64-unknown-linux-gnu" ;;
+            armv7)   TRIPLE="armv7-unknown-linux-gnueabihf" ;;
+            s390x)   TRIPLE="s390x-unknown-linux-gnu" ;;
+            ppc64le) TRIPLE="powerpc64le-unknown-linux-gnu" ;;
+          esac
+          for i in 1 2 3 4 5; do
+            rustup target add "$TRIPLE" && break
+            echo "rustup download failed (attempt $i/5), retrying in 10s..."
+            sleep 10
+          done
+          rustup target list --installed | grep -qx "$TRIPLE"
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -96,6 +114,22 @@ jobs:
         if: matrix.platform.target == 'x86_64'
         with:
           python-version: "3.13.11"
+      - name: Pre-install Rust target (retry on transient network errors)
+        shell: bash
+        run: |
+          case "${{ matrix.platform.target }}" in
+            x86_64)  TRIPLE="x86_64-unknown-linux-musl" ;;
+            x86)     TRIPLE="i686-unknown-linux-musl" ;;
+            aarch64) TRIPLE="aarch64-unknown-linux-musl" ;;
+            armv7)   TRIPLE="armv7-unknown-linux-musleabihf" ;;
+          esac
+          for i in 1 2 3 4 5; do
+            rustup target add "$TRIPLE" && break
+            echo "rustup download failed (attempt $i/5), retrying in 10s..."
+            sleep 10
+          done
+          rustup target list --installed | grep -qx "$TRIPLE"
+
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
