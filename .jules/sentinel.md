@@ -4,5 +4,5 @@
 **Prevention:** Always wrap indefinite async I/O operations, especially connection handshakes, in `tokio::time::timeout` using a configured timeout duration (e.g., `DEFAULT_CONNECT_TIMEOUT`).
 ## 2025-02-18 - Fix missing timeout for WebSocket send in MarketStream
 **Vulnerability:** Similar to connection establishment, the asynchronous `send` operation in `tokio_tungstenite` lacks a built-in timeout. A stalled connection or unresponsive remote host can cause `ws_stream.send(...)` to hang indefinitely during stream initialization, leading to resource exhaustion (DoS).
-**Learning:** All asynchronous I/O operations over sockets (including `send` and `next`) using low-level async crates like `tokio_tungstenite` must be wrapped in `tokio::time::timeout` if they are not naturally bounded, as they do not inherit higher-level request timeouts (like those in `reqwest`).
-**Prevention:** Wrap `ws_stream.send` calls in `tokio::time::timeout` using a configured timeout duration (e.g., `DEFAULT_CONNECT_TIMEOUT`).
+**Learning:** Initialization sends using low-level async crates like `tokio_tungstenite` do not inherit higher-level request timeouts (like those in `reqwest`), so `ws_stream.send(...)` calls made while establishing a stream require an explicit `tokio::time::timeout`.
+**Prevention:** Wrap `ws_stream.send(...)` calls made during stream initialization in `tokio::time::timeout` using a configured timeout duration (e.g., `DEFAULT_CONNECT_TIMEOUT`). Define a separate heartbeat or idle-timeout policy before applying timeouts to long-lived stream reads.
