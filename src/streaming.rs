@@ -80,10 +80,15 @@ impl MarketStream {
                     .map_err(|e| FinanceError::Runtime(e.to_string()))?;
 
                     if let Some(msg) = subscribe_msg {
-                        ws_stream
-                            .send(Message::Text(msg.into()))
-                            .await
-                            .map_err(|e| FinanceError::Runtime(e.to_string()))?;
+                        tokio::time::timeout(
+                            crate::common::DEFAULT_CONNECT_TIMEOUT,
+                            ws_stream.send(Message::Text(msg.into()))
+                        )
+                        .await
+                        .map_err(|_| {
+                            FinanceError::Runtime("WebSocket send timed out".to_string())
+                        })?
+                        .map_err(|e| FinanceError::Runtime(e.to_string()))?;
                     }
 
                     while let Some(msg) = ws_stream.next().await {
