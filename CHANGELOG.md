@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3](https://github.com/sandeep-jaiswar/financeindia/compare/v0.2.2...v0.2.3) (2026-09-17)
+
+
+### Bug Fixes
+
+* **security:** add input validation and improve DOS protection ([3bb04a3](https://github.com/sandeep-jaiswar/financeindia/commit/3bb04a39199b5a8c84788dbb32f4d6b8267fece8))
+* **security:** add timeout to WebSocket message receive loop ([703ffa8](https://github.com/sandeep-jaiswar/financeindia/commit/703ffa8256a727c05000511f2e715313f561ff97))
+* **security:** prevent XXE attacks in XBRL parsing ([d44c28b](https://github.com/sandeep-jaiswar/financeindia/commit/d44c28b2752207b5d788a7ae4ca72843aaabf8ec))
+
 ## [0.2.2](https://github.com/sandeep-jaiswar/financeindia/compare/v0.2.1...v0.2.2) (2026-08-16)
 
 
