@@ -93,7 +93,7 @@ impl FinanceClient {
         // Fast path: check under read lock to avoid exclusive acquisition on every call.
         {
             let last_refresh = self.last_refresh.read().unwrap_or_else(|p| {
-                log::error!("Session read-lock was poisoned; recovering.");
+                log::error!("Session read-lock was poisoned; recovering. Previous thread may have panicked.");
                 p.into_inner()
             });
             if let Some(instant) = *last_refresh {
@@ -104,8 +104,11 @@ impl FinanceClient {
         }
 
         // Slow path: acquire write lock and double-check (another task may have refreshed).
+        // Lock poisoning is recovered by taking the inner value, which may be stale.
+        // Invariant: If a panic occurred while holding the lock, the most recent refresh
+        // time may be outdated, but this only affects when the next refresh is scheduled.
         let mut last_refresh = self.last_refresh.write().unwrap_or_else(|p| {
-            log::error!("Session write-lock was poisoned; recovering.");
+            log::error!("Session write-lock was poisoned; recovering. Previous thread may have panicked.");
             p.into_inner()
         });
         if let Some(instant) = *last_refresh {

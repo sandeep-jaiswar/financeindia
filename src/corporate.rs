@@ -15,6 +15,8 @@ pub async fn financial_results(
     to_date: &str,
     period: &str,
 ) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(symbol, "symbol", 20)?;
+    crate::common::validate_period(period)?;
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_symbol = percent_encode(symbol.as_bytes(), NON_ALPHANUMERIC).to_string();
@@ -71,6 +73,12 @@ pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> FinanceResult<B
     let xml_bytes = fetch_bytes(client, xbrl_url, Some("https://www.nseindia.com/")).await?;
     let xml_str = String::from_utf8(xml_bytes.to_vec())
         .map_err(|e| FinanceError::Runtime(format!("UTF-8 error in XBRL response: {}", e)))?;
+
+    if xml_str.to_uppercase().contains("<!DOCTYPE") {
+        return Err(FinanceError::Runtime(
+            "DOCTYPE declarations are not allowed in XBRL documents (XXE prevention)".to_string(),
+        ));
+    }
 
     let mut reader = Reader::from_str(&xml_str);
     reader.config_mut().trim_text(true);
