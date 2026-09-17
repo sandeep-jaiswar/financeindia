@@ -84,8 +84,36 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
     if std::env::var("FINANCEINDIA_TEST_ENV").as_deref() != Ok("1") {
         builder = builder.https_only(true);
     }
+    // WARNING: FINANCEINDIA_TEST_ENV=1 disables HTTPS enforcement.
+    // This must ONLY be used in test environments and CI pipelines.
+    // Production deployments MUST NOT set this variable.
 
     Ok(builder.build()?)
+}
+
+/// Validates that a string parameter is not empty and has reasonable length.
+pub fn validate_string_param(value: &str, param_name: &str, max_len: usize) -> FinanceResult<()> {
+    if value.is_empty() {
+        return Err(FinanceError::Validation(format!("{} cannot be empty", param_name)));
+    }
+    if value.len() > max_len {
+        return Err(FinanceError::Validation(format!(
+            "{} exceeds maximum length of {} characters",
+            param_name, max_len
+        )));
+    }
+    Ok(())
+}
+
+/// Validates that a financial period is in expected format (e.g., "Q1", "FY").
+pub fn validate_period(period: &str) -> FinanceResult<()> {
+    let upper = period.to_uppercase();
+    if !(upper.starts_with("Q") || upper.starts_with("FY") || upper.starts_with("YE")) {
+        return Err(FinanceError::Validation(
+            format!("Invalid period '{}'. Use Q1-Q4, FY, or YE.", period)
+        ));
+    }
+    Ok(())
 }
 
 pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
@@ -124,7 +152,9 @@ fn with_jitter(delay: Duration) -> Duration {
 }
 
 /// Reads the `Retry-After` header (in seconds) from a rate-limited response.
+/// Caps the value at 1 hour (3600 seconds) to prevent unreasonable delays.
 fn retry_after_secs(resp: &reqwest::Response) -> Option<u64> {
+    const MAX_RETRY_AFTER: u64 = 3600;
     resp.headers()
         .get(reqwest::header::RETRY_AFTER)?
         .to_str()
@@ -132,6 +162,7 @@ fn retry_after_secs(resp: &reqwest::Response) -> Option<u64> {
         .trim()
         .parse::<u64>()
         .ok()
+        .and_then(|secs| if secs <= MAX_RETRY_AFTER { Some(secs) } else { None })
 }
 
 pub async fn fetch_bytes(
@@ -295,9 +326,25 @@ pub fn read_first_text_file_from_zip(bytes: Bytes) -> FinanceResult<Bytes> {
         return Err(FinanceError::Runtime("Zip archive is empty".to_string()));
     }
 
+    // Sanity check: prevent excessive number of entries (zip bomb vector)
+    if archive.len() > 10000 {
+        return Err(FinanceError::Runtime(
+            "ZIP archive contains too many entries (possible zip bomb attack)".to_string(),
+        ));
+    }
+
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         if !file.is_dir() {
+            // Check compressed size as a first sanity check
+            let compressed_size = file.compressed_size();
+            if compressed_size > MAX_DECOMPRESSED_ENTRY_SIZE {
+                return Err(FinanceError::Runtime(format!(
+                    "ZIP entry compressed size {} exceeds limit",
+                    compressed_size
+                )));
+            }
+
             let mut buf = Vec::new();
             (&mut file)
                 .take(MAX_DECOMPRESSED_ENTRY_SIZE)
