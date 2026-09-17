@@ -91,7 +91,13 @@ impl MarketStream {
                         .map_err(|e| FinanceError::Runtime(e.to_string()))?;
                     }
 
-                    while let Some(msg) = ws_stream.next().await {
+                    let read_timeout = std::time::Duration::from_secs(60);
+                    loop {
+                        let msg = tokio::time::timeout(read_timeout, ws_stream.next())
+                            .await
+                            .map_err(|_| FinanceError::Runtime("WebSocket read timed out".to_string()))?;
+
+                        let Some(msg) = msg else { break; };
                         let msg = msg.map_err(|e| FinanceError::Runtime(e.to_string()))?;
 
                         if msg.is_text() {
