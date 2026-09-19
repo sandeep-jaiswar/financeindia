@@ -87,9 +87,9 @@ class MeanReversionBot:
         self.symbol = symbol
         self.lookback_days = lookback_days
     
-    def calculate_signal(self) -> str:
+    def calculate_signal(self) -> tuple:
         """
-        Returns: 'BUY', 'SELL', or 'HOLD'
+        Returns: ('BUY'|'SELL'|'HOLD', quote_dict)
         """
         # Fetch last 20 days
         end_date = datetime.now()
@@ -102,7 +102,8 @@ class MeanReversionBot:
         )
         
         if len(data) < self.lookback_days:
-            return "HOLD"
+            quote = self.client.get_equity_quote(self.symbol)
+            return "HOLD", quote
         
         # Calculate 20-day MA
         closes = [row.close_price for row in data]
@@ -116,15 +117,16 @@ class MeanReversionBot:
         
         # Signal logic
         if current_price < ma_20 * 0.95 and volume > avg_volume * 1.2:
-            return "BUY"  # Price 5% below MA + high volume
+            signal = "BUY"  # Price 5% below MA + high volume
         elif current_price > ma_20 * 1.05 and volume > avg_volume * 1.2:
-            return "SELL"  # Price 5% above MA + high volume
+            signal = "SELL"  # Price 5% above MA + high volume
         else:
-            return "HOLD"
+            signal = "HOLD"
+        
+        return signal, quote
     
     def run(self):
-        signal = self.calculate_signal()
-        quote = self.client.get_equity_quote(self.symbol)
+        signal, quote = self.calculate_signal()
         price = quote['tradeInfo']['lastPrice']
         
         print(f"{self.symbol} @ ₹{price:.2f} → {signal}")
@@ -145,6 +147,7 @@ Analyze option chains to find high-IV opportunities.
 import financeindia
 from dataclasses import dataclass
 from typing import Optional
+from heapq import nlargest
 
 @dataclass
 class OptionOpportunity:
@@ -161,9 +164,9 @@ class OptionChainAnalyzer:
         self.client = financeindia.FinanceClient()
         self.index = index
     
-    def find_high_iv_opportunities(self, min_iv: float = 30) -> list:
+    def find_high_iv_opportunities(self, min_iv: float = 30, top_n: int = 5) -> list:
         """
-        Find option strikes with IV > min_iv
+        Find option strikes with IV > min_iv, returning top N by IV
         """
         options = self.client.get_option_chain(self.index, is_index=True)
         
@@ -182,7 +185,8 @@ class OptionChainAnalyzer:
                 )
                 opportunities.append(opp)
         
-        return sorted(opportunities, key=lambda x: x.iv, reverse=True)[:5]
+        # Use heapq.nlargest for O(n) top-N selection instead of O(n log n) sort
+        return nlargest(top_n, opportunities, key=lambda x: x.iv)
     
     def print_report(self):
         print(f"\n=== High IV Opportunities ({self.index}) ===\n")
@@ -375,31 +379,28 @@ class BacktestEngine:
         Simple moving average crossover strategy
         """
         data = self.fetch_historical_data(252)
+        prices = [row.close_price for row in data]
         
-        for i in range(long_ma, len(data)):
-            previous_window = data[i-long_ma:i]
-            current_window = data[i-long_ma+1:i+1]
-            previous_prices = [row.close_price for row in previous_window]
-            current_prices = [row.close_price for row in current_window]
+        for i in range(long_ma, len(prices)):
+            # Calculate MAs efficiently using slices
+            prev_short = sum(prices[i-long_ma:i-long_ma+short_ma]) / short_ma
+            prev_long = sum(prices[i-long_ma:i]) / long_ma
+            curr_short = sum(prices[i-long_ma+1:i-long_ma+1+short_ma]) / short_ma
+            curr_long = sum(prices[i-long_ma+1:i+1]) / long_ma
             
-            previous_short_avg = sum(previous_prices[-short_ma:]) / short_ma
-            previous_long_avg = sum(previous_prices) / long_ma
-            current_short_avg = sum(current_prices[-short_ma:]) / short_ma
-            current_long_avg = sum(current_prices) / long_ma
-            
-            current_price = data[i].close_price
+            current_price = prices[i]
             
             # BUY signal: short MA crosses above long MA
-            if (previous_short_avg <= previous_long_avg and
-                    current_short_avg > current_long_avg and self.positions == 0):
+            if (prev_short <= prev_long and
+                    curr_short > curr_long and self.positions == 0):
                 self.buy(current_price, data[i].date)
             
             # SELL signal: short MA crosses below long MA
-            elif (previous_short_avg >= previous_long_avg and
-                  current_short_avg < current_long_avg and self.positions > 0):
+            elif (prev_short >= prev_long and
+                  curr_short < curr_long and self.positions > 0):
                 self.sell(current_price, data[i].date)
         
-        final_close = data[-1].close_price
+        final_close = prices[-1]
         return self.calculate_returns(final_close)
     
     def buy(self, price: float, date: str):

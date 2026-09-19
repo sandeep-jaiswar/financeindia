@@ -30,27 +30,29 @@ class MarketMonitor:
             # 2. FII/DII Activity
             fii_dii = self.client.get_fii_dii_activity()
             print(f"\nFII/DII Activity (Latest):")
-            fii = next((row for row in fii_dii if row.category == "FII/FPI"), None)
-            dii = next((row for row in fii_dii if row.category == "DII"), None)
-            if fii and dii:
-                print(f"  FII Buy: ₹{fii.buy_value:,.0f}Cr | FII Sell: ₹{fii.sell_value:,.0f}Cr")
-                print(f"  DII Buy: ₹{dii.buy_value:,.0f}Cr | DII Sell: ₹{dii.sell_value:,.0f}Cr")
-                fii_net = fii.buy_value - fii.sell_value
-                print(f"  FII Net: ₹{fii_net:,.0f}Cr {'(BUYING)' if fii_net > 0 else '(SELLING)'}")
+            if fii_dii:
+                # Data comes as list of categories (FII, DII, etc.)
+                for row in fii_dii[:2]:  # Show FII and DII
+                    print(f"  {row.category}:")
+                    print(f"    Buy: ₹{row.buy_value:,.0f}Cr | Sell: ₹{row.sell_value:,.0f}Cr")
+                    print(f"    Net: ₹{row.net_value:,.0f}Cr {'(BUYING)' if row.net_value > 0 else '(SELLING)'}")
         except Exception as e:
             print(f"FII/DII Error: {e}")
 
         try:
             # 3. Market Breadth
             advances_declines = self.client.get_advances_declines()
-            advance = advances_declines['advance']
-            print(f"\nMarket Breadth:")
-            print(f"  Advances: {advance['advances']}")
-            print(f"  Declines: {advance['declines']}")
-            print(f"  Unchanged: {advance['unchanged']}")
-            if advance['declines'] > 0:
-                breadth_ratio = advance['advances'] / advance['declines']
-                print(f"  A/D Ratio: {breadth_ratio:.2f}")
+            if advances_declines:
+                advance = advances_declines.get('advance', {})
+                print(f"\nMarket Breadth:")
+                print(f"  Advances: {advance.get('advances', 0)}")
+                print(f"  Declines: {advance.get('declines', 0)}")
+                print(f"  Unchanged: {advance.get('unchanged', 0)}")
+                if advance.get('declines', 0) > 0:
+                    breadth_ratio = advance.get('advances', 0) / advance.get('declines', 1)
+                    print(f"  A/D Ratio: {breadth_ratio:.2f}")
+            else:
+                print("  (No breadth data available)")
         except Exception as e:
             print(f"Breadth Error: {e}")
 
@@ -60,12 +62,12 @@ class MarketMonitor:
             losers = self.client.get_top_losers()["NIFTY"]["data"]
 
             print(f"\nTop Gainers:")
-            for stock in gainers[:3]:
-                print(f"  {stock['symbol']}: +{stock['perChange']:.2f}%")
+            for stock in gainers[:3] if gainers else []:
+                print(f"  {stock.get('symbol', 'N/A')}: +{stock.get('pctChange', 0):.2f}%")
 
             print(f"\nTop Losers:")
-            for stock in losers[:3]:
-                print(f"  {stock['symbol']}: {stock['perChange']:.2f}%")
+            for stock in losers[:3] if losers else []:
+                print(f"  {stock.get('symbol', 'N/A')}: {stock.get('pctChange', 0):.2f}%")
         except Exception as e:
             print(f"Gainers/Losers Error: {e}")
 
