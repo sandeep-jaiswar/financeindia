@@ -31,13 +31,14 @@ class OptionChainAnalyzer:
             opportunities = []
             for row in options:
                 # High IV = higher option premiums = selling opportunities
-                if hasattr(row, 'iv') and row.iv > min_iv:
+                iv = row.get('iv')
+                if iv is not None and iv > min_iv:
                     opp = OptionOpportunity(
-                        strike=row.strike,
-                        option_type="CE" if row.option_type == "CE" else "PE",
-                        iv=row.iv,
-                        bid=row.bid if hasattr(row, 'bid') else 0,
-                        ask=row.ask if hasattr(row, 'ask') else 0,
+                        strike=row['strike'],
+                        option_type="CE" if row['option_type'] == "CE" else "PE",
+                        iv=iv,
+                        bid=row.get('bid', 0),
+                        ask=row.get('ask', 0),
                     )
                     opportunities.append(opp)
 

@@ -166,29 +166,14 @@ Each implements:
 
 ### 5. Archive Module (archive.rs)
 
-Handles zip/bhavcopy downloads with security.
+Creates ZIP archives from downloaded bhavcopy data. Before creating an archive,
+the module validates the caller-provided output path by rejecting parent (`..`)
+and platform-prefix components, rejecting an existing symlink as the destination,
+canonicalizing the parent directory, and requiring relative paths to resolve
+within the current working directory. The canonical parent and validated file
+name are then joined to produce the final archive path.
 
-```rust
-pub fn extract_safe(zip_data: &[u8], target_dir: &Path) -> Result<()> {
-    let mut archive = ZipArchive::new(Cursor::new(zip_data))?;
-    
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let outpath = target_dir.join(file.name());
-        
-        // Zip Slip prevention: ensure outpath is under target_dir
-        if !outpath.starts_with(target_dir) {
-            return Err("Path traversal attempt detected".into());
-        }
-        
-        // Extract safely
-        // ...
-    }
-    Ok(())
-}
-```
-
-**Security**: Prevents directory traversal attacks (CVE-2021-21315).
+**Security**: Prevents output-path traversal and symlink redirection.
 
 ---
 

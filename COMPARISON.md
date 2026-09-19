@@ -146,6 +146,7 @@ This guide helps you choose the right NSE data library for your use case.
 
 ```python
 # OLD (nsepy)
+from datetime import date
 from nsepy import get_history
 data = get_history(symbol='RELIANCE', start=date(2026, 1, 1), end=date(2026, 9, 19))
 print(data['Close'])
@@ -169,7 +170,7 @@ print(hist['Close'])
 # NEW (financeindia)
 import financeindia
 client = financeindia.FinanceClient()
-data = client.price_volume_data('RELIANCE', '01-01-2025', '19-09-2026')
+data = client.price_volume_data('RELIANCE', '19-09-2025', '19-09-2026')
 # Richer data: includes volume, open interest, delivery %
 ```
 

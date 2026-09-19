@@ -31,6 +31,7 @@ class PortfolioDashboard:
         """Fetch current quotes for all positions"""
         total_value = 0
         total_pl = 0
+        total_buy_value = 0
 
         print(f"\n{'Symbol':<10} {'Qty':<6} {'Buy':<10} {'Current':<10} {'P&L':<12} {'P&L %':<8}")
         print("-" * 66)
@@ -47,13 +48,13 @@ class PortfolioDashboard:
 
                 total_value += position_value
                 total_pl += pl
+                total_buy_value += buy_value
 
                 print(f"{position.symbol:<10} {position.quantity:<6} {position.buy_price:<10.2f} "
                       f"{current_price:<10.2f} {pl:<12.2f} {pl_pct:<8.2f}%")
             except Exception as e:
                 print(f"{position.symbol:<10} Error: {str(e)[:30]}")
 
-        total_buy_value = sum(p.quantity * p.buy_price for p in self.positions)
         if total_buy_value > 0:
             total_pl_pct = (total_pl / total_buy_value) * 100
             print("-" * 66)

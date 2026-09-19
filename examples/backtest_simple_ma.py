@@ -43,23 +43,30 @@ class BacktestEngine:
             return {}
 
         for i in range(long_ma, len(data)):
-            window = data[i-long_ma:i]
-            prices = [row.close_price for row in window]
+            previous_window = data[i-long_ma:i]
+            current_window = data[i-long_ma+1:i+1]
+            previous_prices = [row.close_price for row in previous_window]
+            current_prices = [row.close_price for row in current_window]
 
-            short_avg = sum(prices[-short_ma:]) / short_ma
-            long_avg = sum(prices) / long_ma
+            previous_short_avg = sum(previous_prices[-short_ma:]) / short_ma
+            previous_long_avg = sum(previous_prices) / long_ma
+            current_short_avg = sum(current_prices[-short_ma:]) / short_ma
+            current_long_avg = sum(current_prices) / long_ma
 
             current_price = data[i].close_price
 
             # BUY signal: short MA crosses above long MA
-            if short_avg > long_avg and self.positions == 0:
+            if (previous_short_avg <= previous_long_avg and
+                    current_short_avg > current_long_avg and self.positions == 0):
                 self.buy(current_price, data[i].date)
 
             # SELL signal: short MA crosses below long MA
-            elif short_avg < long_avg and self.positions > 0:
+            elif (previous_short_avg >= previous_long_avg and
+                  current_short_avg < current_long_avg and self.positions > 0):
                 self.sell(current_price, data[i].date)
 
-        return self.calculate_returns()
+        final_close = data[-1].close_price
+        return self.calculate_returns(final_close)
 
     def buy(self, price: float, date: str):
         """Buy signal"""
@@ -89,16 +96,9 @@ class BacktestEngine:
             print(f"[{date}] SELL {self.positions} @ ₹{price:.2f}")
             self.positions = 0
 
-    def calculate_returns(self) -> dict:
+    def calculate_returns(self, final_close: float) -> dict:
         """Calculate backtest performance metrics"""
-        if not hasattr(self, '_last_price'):
-            data = self.fetch_historical_data(1)
-            if data:
-                self._last_price = data[-1].close_price
-            else:
-                self._last_price = 0
-
-        final_value = self.cash + (self.positions * self._last_price if self.positions > 0 else 0)
+        final_value = self.cash + (self.positions * final_close if self.positions > 0 else 0)
         returns = ((final_value - self.capital) / self.capital) * 100
 
         return {

@@ -152,7 +152,7 @@ if results:
 `financeindia` is built for high-scale quant pipelines:
 - **Direct CSV Parsing**: CSV data is parsed into Python objects in Rust, without an intermediate Python-visible string round-trip.
 - **Concurrent-Safe**: Uses `RwLock` and optimized connection pooling for multi-threaded usage.
-- **Blazing Fast**: Up to 3x faster than traditional JSON-based wrappers (see [BENCHMARKS.md](BENCHMARKS.md) for detailed comparisons).
+- **Blazing Fast**: Up to 4.6x faster than traditional Python wrappers in the documented benchmarks (see [BENCHMARKS.md](BENCHMARKS.md) for detailed comparisons).
 
 ### Benchmark Results
 
@@ -160,7 +160,7 @@ if results:
 |-----------|--------------|----------|-------------------|
 | Equity List (7000+ symbols) | 850ms | 3.2s | 4.1s |
 | Historical Data (1 year) | 120ms | 450ms | 520ms |
-| Option Chain (5000+ rows) | 680ms | 2.8s | N/A |
+| Option Chain (5000+ rows) | 680ms | N/A | N/A |
 
 See [BENCHMARKS.md](BENCHMARKS.md) for full performance analysis and methodology.
 
@@ -181,7 +181,7 @@ See [EXAMPLES.md](EXAMPLES.md) for production-ready code samples.
 
 | Feature | financeindia | yfinance | pandas_datareader | nsepy |
 |---------|--------------|----------|-------------------|-------|
-| **Speed** | ⚡ 3x faster | Medium | Medium | Slow |
+| **Speed** | ⚡ Up to 4.6x faster | Medium | Medium | Slow |
 | **NSE Coverage** | ✅ 42+ endpoints | ⚠️ Limited | ⚠️ Limited | ✅ Good |
 | **Option Chains** | ✅ Real-time | ❌ No | ❌ No | ✅ Yes |
 | **F&O Data** | ✅ Full | ❌ No | ❌ No | ⚠️ Partial |
@@ -208,8 +208,8 @@ print(f"Price: {quote['tradeInfo']['lastPrice']}, Volume: {quote['tradeInfo']['t
 options = client.get_option_chain("NIFTY", is_index=True)
 # Each row has: strike, bid, ask, IV, delta, gamma, etc.
 for row in options:
-    if row.iv > 25:  # High IV opportunities
-        print(f"Strike {row.strike}: IV={row.iv}, Delta={row.delta}")
+    if row['iv'] > 25:  # High IV opportunities
+        print(f"Strike {row['strike']}: IV={row['iv']}, Delta={row['delta']}")
 ```
 
 ### Portfolio Delivery Tracking

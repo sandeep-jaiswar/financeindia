@@ -144,6 +144,7 @@ Analyze option chains to find high-IV opportunities.
 ```python
 import financeindia
 from dataclasses import dataclass
+from typing import Optional
 
 @dataclass
 class OptionOpportunity:
@@ -152,8 +153,8 @@ class OptionOpportunity:
     iv: float
     bid: float
     ask: float
-    delta: float
-    theta: float
+    delta: Optional[float]
+    theta: Optional[float]
 
 class OptionChainAnalyzer:
     def __init__(self, index: str = "NIFTY"):
@@ -188,12 +189,14 @@ class OptionChainAnalyzer:
         opportunities = self.find_high_iv_opportunities()
         
         for opp in opportunities:
+            delta = f"{opp.delta:>6.2f}" if opp.delta is not None else "   N/A"
+            theta = f"{opp.theta:>6.2f}" if opp.theta is not None else "   N/A"
             print(f"Strike {opp.strike:>6.0f} {opp.type} | "
                   f"IV: {opp.iv:>5.1f}% | "
                   f"Bid: {opp.bid:>6.2f} | "
                   f"Ask: {opp.ask:>6.2f} | "
-                  f"Delta: {opp.delta:>6.2f} | "
-                  f"Theta: {opp.theta:>6.2f}")
+                  f"Delta: {delta} | "
+                  f"Theta: {theta}")
 
 if __name__ == "__main__":
     analyzer = OptionChainAnalyzer("NIFTY")
@@ -208,6 +211,7 @@ Extract fundamental financial data for investment analysis.
 
 ```python
 import financeindia
+from datetime import datetime
 
 class FundamentalAnalyzer:
     def __init__(self, symbol: str):
@@ -222,7 +226,7 @@ class FundamentalAnalyzer:
         results = self.client.get_financial_results(
             self.symbol,
             "01-01-2024",
-            "19-09-2026",
+            datetime.now().strftime("%d-%m-%Y"),
             "Annual"  # or "Quarterly"
         )
         
@@ -252,7 +256,7 @@ class FundamentalAnalyzer:
         (requires parsing the detailed response)
         """
         results = self.client.get_financial_results(
-            self.symbol, "01-01-2024", "19-09-2026", "Annual"
+            self.symbol, "01-01-2024", datetime.now().strftime("%d-%m-%Y"), "Annual"
         )
         if not results:
             return {}
@@ -373,23 +377,30 @@ class BacktestEngine:
         data = self.fetch_historical_data(252)
         
         for i in range(long_ma, len(data)):
-            window = data[i-long_ma:i]
-            prices = [row.close_price for row in window]
+            previous_window = data[i-long_ma:i]
+            current_window = data[i-long_ma+1:i+1]
+            previous_prices = [row.close_price for row in previous_window]
+            current_prices = [row.close_price for row in current_window]
             
-            short_avg = sum(prices[-short_ma:]) / short_ma
-            long_avg = sum(prices) / long_ma
+            previous_short_avg = sum(previous_prices[-short_ma:]) / short_ma
+            previous_long_avg = sum(previous_prices) / long_ma
+            current_short_avg = sum(current_prices[-short_ma:]) / short_ma
+            current_long_avg = sum(current_prices) / long_ma
             
             current_price = data[i].close_price
             
             # BUY signal: short MA crosses above long MA
-            if short_avg > long_avg and self.positions == 0:
+            if (previous_short_avg <= previous_long_avg and
+                    current_short_avg > current_long_avg and self.positions == 0):
                 self.buy(current_price, data[i].date)
             
             # SELL signal: short MA crosses below long MA
-            elif short_avg < long_avg and self.positions > 0:
+            elif (previous_short_avg >= previous_long_avg and
+                  current_short_avg < current_long_avg and self.positions > 0):
                 self.sell(current_price, data[i].date)
         
-        return self.calculate_returns()
+        final_close = data[-1].close_price
+        return self.calculate_returns(final_close)
     
     def buy(self, price: float, date: str):
         """Buy signal"""
@@ -419,9 +430,9 @@ class BacktestEngine:
             })
             self.positions = 0
     
-    def calculate_returns(self) -> dict:
+    def calculate_returns(self, final_close: float) -> dict:
         """Calculate backtest performance metrics"""
-        final_value = self.cash + (self.positions * self.fetch_historical_data(1)[0].close_price if self.positions > 0 else 0)
+        final_value = self.cash + (self.positions * final_close if self.positions > 0 else 0)
         returns = ((final_value - self.capital) / self.capital) * 100
         
         return {

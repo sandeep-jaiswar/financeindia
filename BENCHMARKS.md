@@ -50,7 +50,7 @@ print(f"Retrieved {len(equities)} equities in {elapsed*1000:.1f}ms")
 ```python
 # Fetch 1 year of OHLC for a single stock
 start = time.time()
-data = client.price_volume_data("RELIANCE", "01-01-2025", "19-09-2026")
+data = client.price_volume_data("RELIANCE", "19-09-2025", "19-09-2026")
 elapsed = time.time() - start
 
 print(f"Retrieved {len(data)} candles in {elapsed*1000:.1f}ms")
@@ -77,7 +77,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
 print(f"Fetched {len(results)} quotes concurrently in {elapsed*1000:.1f}ms")
 ```
 
-**Result**: 10 concurrent requests in 920ms (vs. 4200ms sequentially with yfinance)
+**Result**: 10 concurrent requests in 920ms (vs. 4200ms concurrently with yfinance)
 
 ## Comparison Criteria
 

@@ -35,7 +35,7 @@ This project adheres to the Contributor Covenant [code of conduct](https://www.c
 **Description**: get_equity_list() returns 500 error on weekends
 
 **Steps to Reproduce**:
-1. Call `client.get_equity_list()` on Saturday 2026-09-20
+1. Call `client.get_equity_list()` on Sunday 2026-09-20
 2. See error: `HTTPError 500`
 
 **Expected**: Should return empty list or appropriate weekend status
@@ -274,15 +274,17 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ### Type
 
+- `build`: Build system or external dependencies
+- `chore`: Maintenance tasks and dependencies
+- `ci`: Continuous integration configuration
+- `docs`: Documentation
 - `feat`: New feature
 - `fix`: Bug fix
-- `docs`: Documentation
-- `refactor`: Code refactoring (no behavior change)
 - `perf`: Performance improvement
-- `test`: Test additions/updates
-- `chore`: Build, CI, dependencies
-- `style`: Code style (formatting, semicolons)
+- `refactor`: Code refactoring (no behavior change)
 - `revert`: Revert previous commit
+- `style`: Code style (formatting, semicolons)
+- `test`: Test additions/updates
 
 ### Subject (max 50 chars)
 - Imperative mood ("add" not "added" or "adds")

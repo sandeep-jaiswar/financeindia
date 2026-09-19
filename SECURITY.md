@@ -6,22 +6,18 @@
 
 ## Security Measures
 
-### 1. Zip Slip Prevention (Archive Security)
+### 1. Archive Output-Path Validation
 
-**Issue**: Malicious ZIP files can extract files outside the target directory via path traversal.
+`BhavArchive.archive_equities()` creates an archive at a caller-provided path; it
+does not extract ZIP entries to the filesystem. Before creating the archive, it:
 
-**Fix** (v0.2.3+): All archive extraction validates paths:
-```rust
-// In src/archive.rs
-let outpath = target_dir.join(file.name());
+- Rejects parent-directory (`..`) and platform-prefix path components.
+- Rejects an existing output path when it is a symlink.
+- Canonicalizes the parent directory so symlinked parents are resolved.
+- Requires relative output paths to resolve within the current working directory.
+- Joins the canonical parent with the validated file name before opening the file.
 
-// Prevent directory traversal
-if !outpath.starts_with(target_dir) {
-    return Err("Path traversal attempt detected");
-}
-```
-
-**Impact**: Safe handling of `bhav_copy_equities()`, `bhav_copy_derivatives()`, etc.
+These checks prevent symlink and path traversal through the archive output path.
 
 ### 2. Memory Safety
 
@@ -29,7 +25,7 @@ if !outpath.starts_with(target_dir) {
 - ✅ No buffer overflows (bounds checking enforced)
 - ✅ No use-after-free (ownership system)
 - ✅ No data races (borrow checker)
-- ✅ No integer underflow (checked arithmetic)
+- ✅ Overflow-sensitive operations explicitly use checked arithmetic where required
 
 ### 3. Dependency Management
 

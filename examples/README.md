@@ -44,8 +44,8 @@ RELIANCE   100    2850.00    3120.00    27000.00     9.47%
 INFY       50     3400.00    3650.00    12500.00     7.35%
 TCS        25     3800.00    4100.00    7500.00      7.89%
 ------------------------------------------------------
-TOTAL                                   47000.00     8.60%
-Portfolio Value: ₹1,247,500.00
+TOTAL                                   47000.00     8.55%
+Portfolio Value: ₹597,000.00
 ```
 
 ### 2. Option Chain Analysis (`option_analysis.py`)
@@ -53,7 +53,7 @@ Portfolio Value: ₹1,247,500.00
 Identify high-IV option opportunities for selling.
 
 **Features**:
-- Fetch full option chain for NIFTY/BANKNIFTY/stocks
+- Fetch full option chain for NIFTY/BANKNIFTY indices
 - Filter by implied volatility (IV)
 - Display bid-ask spreads
 
