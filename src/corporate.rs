@@ -82,6 +82,7 @@ pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> FinanceResult<B
 
     let mut reader = Reader::from_str(&xml_str);
     reader.config_mut().trim_text(true);
+    reader.config_mut().expand_empty_elements = true;
 
     let mut results: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
     let mut buf = Vec::new();
