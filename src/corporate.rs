@@ -74,21 +74,24 @@ pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> FinanceResult<B
     let xml_str = String::from_utf8(xml_bytes.to_vec())
         .map_err(|e| FinanceError::Runtime(format!("UTF-8 error in XBRL response: {}", e)))?;
 
+    parse_xbrl_xml(&xml_str)
+}
+
+fn parse_xbrl_xml(xml_str: &str) -> FinanceResult<Bytes> {
     if xml_str.to_uppercase().contains("<!DOCTYPE") {
         return Err(FinanceError::Runtime(
             "DOCTYPE declarations are not allowed in XBRL documents (XXE prevention)".to_string(),
         ));
     }
 
-    let mut reader = Reader::from_str(&xml_str);
+    let mut reader = Reader::from_str(xml_str);
     reader.config_mut().trim_text(true);
     reader.config_mut().expand_empty_elements = true;
 
     let mut results: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
     let mut buf = Vec::new();
-    // A tag stack is used to maintain context across nested elements.
-    let mut tag_stack: Vec<String> = Vec::new();
-    let mut current_attrs: HashMap<String, String> = HashMap::new();
+    // Keep each element's tag and attributes together across nested elements.
+    let mut tag_stack: Vec<(String, HashMap<String, String>)> = Vec::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -96,31 +99,30 @@ pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> FinanceResult<B
                 let name = std::str::from_utf8(e.local_name().as_ref())
                     .unwrap_or("")
                     .to_string();
-                current_attrs.clear();
+                let mut attrs = HashMap::new();
                 for attr in e.attributes().flatten() {
                     let key = std::str::from_utf8(attr.key.as_ref())
                         .unwrap_or("")
                         .to_string();
                     let value = String::from_utf8_lossy(&attr.value).into_owned();
-                    current_attrs.insert(key, value);
+                    attrs.insert(key, value);
                 }
-                tag_stack.push(name);
+                tag_stack.push((name, attrs));
             }
             Ok(Event::Text(e)) => {
-                if let Some(tag) = tag_stack.last() {
+                if let Some((tag, attrs)) = tag_stack.last() {
                     if let Ok(unescaped) = e.unescape() {
                         let text = unescaped.trim().to_string();
                         if !text.is_empty() {
                             let mut fact = serde_json::Map::new();
                             fact.insert("value".to_string(), serde_json::Value::String(text));
-                            if !current_attrs.is_empty() {
-                                let attrs_value =
-                                    serde_json::to_value(&current_attrs).map_err(|e| {
-                                        FinanceError::Runtime(format!(
-                                            "Attribute serialisation error: {}",
-                                            e
-                                        ))
-                                    })?;
+                            if !attrs.is_empty() {
+                                let attrs_value = serde_json::to_value(attrs).map_err(|e| {
+                                    FinanceError::Runtime(format!(
+                                        "Attribute serialisation error: {}",
+                                        e
+                                    ))
+                                })?;
                                 fact.insert("attrs".to_string(), attrs_value);
                             }
                             results
@@ -166,4 +168,74 @@ pub async fn insider_trades(
         Some("https://www.nseindia.com/companies-listing/corporate-filings-insider-trading"),
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parent_attributes_survive_empty_children() {
+        for child in [
+            "<child/>",
+            "<child contextRef=\"child\"/>",
+            "<child></child>",
+            "<child contextRef=\"child\"></child>",
+        ] {
+            let xml = format!(
+                "<root><parent contextRef=\"parent\">before{child}after</parent>\
+                 <sibling contextRef=\"sibling\">next</sibling></root>"
+            );
+            let result: serde_json::Value =
+                serde_json::from_slice(&parse_xbrl_xml(&xml).unwrap()).unwrap();
+            assert_eq!(
+                result,
+                json!({
+                    "parent": [
+                        {"value": "before", "attrs": {"contextRef": "parent"}},
+                        {"value": "after", "attrs": {"contextRef": "parent"}}
+                    ],
+                    "sibling": [{"value": "next", "attrs": {"contextRef": "sibling"}}]
+                }),
+                "child: {child}"
+            );
+        }
+    }
+
+    #[test]
+    fn parent_without_attributes_does_not_inherit_child_attributes() {
+        let result: serde_json::Value = serde_json::from_slice(
+            &parse_xbrl_xml("<parent><child contextRef=\"child\"/>after</parent>").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result, json!({"parent": [{"value": "after"}]}));
+    }
+
+    #[test]
+    fn nested_elements_keep_their_own_attributes() {
+        let xml = r#"<parent contextRef="parent">before
+            <child contextRef="child">child before
+                <grandchild unitRef="units">42</grandchild>
+                child after
+            </child>
+            after
+        </parent>"#;
+        let result: serde_json::Value =
+            serde_json::from_slice(&parse_xbrl_xml(xml).unwrap()).unwrap();
+        assert_eq!(
+            result,
+            json!({
+                "parent": [
+                    {"value": "before", "attrs": {"contextRef": "parent"}},
+                    {"value": "after", "attrs": {"contextRef": "parent"}}
+                ],
+                "child": [
+                    {"value": "child before", "attrs": {"contextRef": "child"}},
+                    {"value": "child after", "attrs": {"contextRef": "child"}}
+                ],
+                "grandchild": [{"value": "42", "attrs": {"unitRef": "units"}}]
+            })
+        );
+    }
 }
