@@ -71,7 +71,7 @@ impl BhavArchive {
                     })?;
 
                     let base = env::current_dir().map_err(FinanceError::Io)?;
-                    if !path.is_absolute() && !canonical_parent.starts_with(&base) {
+                    if !canonical_parent.starts_with(&base) {
                         return Err(FinanceError::PyErr(
                             pyo3::exceptions::PyValueError::new_err(
                                 "Invalid output path: Path resolves outside allowed directory.",
