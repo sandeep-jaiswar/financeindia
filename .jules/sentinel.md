@@ -18,17 +18,3 @@
 **Vulnerability:** Core functions `parse_date_robust` and `validate_period` accepted unbounded strings directly from user input or network sources, and performed memory-allocating operations (`date.replace`, `period.to_uppercase`). An attacker could provide a very large string (e.g. 2GB), leading to massive allocations and server crash via Out-of-Memory (OOM DoS).
 **Learning:** Even seemingly harmless string parsing functions must enforce maximum length limits if they originate from potentially untrusted inputs, because operations like `.replace()` or `.to_uppercase()` create new allocations proportional to the input size.
 **Prevention:** Always validate the length of input strings using functions like `validate_string_param(value, name, max_len)` *before* processing or mutating them.
-
-## 2023-10-28 - [Path Traversal] Archive generation allows absolute path traversal
-**Vulnerability:** The `archive_equities` function incorrectly checked `!canonical_parent.starts_with(&base)` only when the input `path` was a relative path (`!path.is_absolute()`). This allowed an attacker to bypass the directory restriction by providing an absolute path (e.g., `/tmp/malicious.zip`), leading to arbitrary file write outside the intended directory.
-**Learning:** Security checks that restrict path locations must apply uniformly to both relative and absolute paths. Conditional validation based on the path's absoluteness can inadvertently create bypasses.
-**Prevention:** Always enforce path resolution bounds (e.g., `starts_with(&allowed_base)`) unconditionally, regardless of whether the initial input was absolute or relative.
-
-## 2024-05-25 - Fix arbitrary file write bypass in output path validation
-**Vulnerability:** In `archive_equities`, the path boundary check condition `if !path.is_absolute() && !canonical_parent.starts_with(&base)` meant that absolute paths bypassed the `starts_with` validation entirely, allowing an attacker to write files anywhere on the filesystem if they control the `output_path`.
-**Learning:** Short-circuiting validation checks based on path type (`is_absolute()`) introduces critical bypasses. Boundary checks should apply unconditionally to the resolved/canonicalized path.
-**Prevention:** Remove `!path.is_absolute()` condition to apply the base directory validation unconditionally to all paths.
-## 2025-02-18 - Fix missing length bounds on user-supplied strings
-**Vulnerability:** Input strings passed to `parse_date_robust` and `validate_period` lacked length constraints before processing (like allocations during replacements or `.to_uppercase()`). This can allow for memory exhaustion (DoS) attacks via overly large string inputs.
-**Learning:** String manipulation operations like `replace` and `to_uppercase` allocate new memory. An unbounded string input exposes these methods to Denial of Service via memory exhaustion.
-**Prevention:** Always enforce strict length limits on user-supplied strings using `validate_string_param` before performing any transformation or parsing logic, especially in publicly exposed APIs handling strings like dates or periods.
