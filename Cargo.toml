@@ -27,7 +27,7 @@ pyo3 = { version = "0.24", features = ["abi3-py38"] }
 # Ensure cookies feature is enabled
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "cookies", "json", "gzip", "stream"] }
 chrono = "0.4"
-zip = "2.2"
+zip = "9.0"
 percent-encoding = "2.3"
 quick-xml = "0.37"
 serde = { version = "1.0", features = ["derive"] }
