@@ -107,6 +107,7 @@ pub fn validate_string_param(value: &str, param_name: &str, max_len: usize) -> F
 
 /// Validates that a financial period is in expected format (e.g., "Q1", "FY").
 pub fn validate_period(period: &str) -> FinanceResult<()> {
+    validate_string_param(period, "period", 10)?;
     let upper = period.to_uppercase();
     if !(upper.starts_with("Q") || upper.starts_with("FY") || upper.starts_with("YE")) {
         return Err(FinanceError::Validation(
@@ -117,6 +118,7 @@ pub fn validate_period(period: &str) -> FinanceResult<()> {
 }
 
 pub fn parse_date_robust(date: &str) -> FinanceResult<NaiveDate> {
+    validate_string_param(date, "date", 20)?;
     let formats = [
         NSE_DATE_FMT,
         "%Y-%m-%d",
