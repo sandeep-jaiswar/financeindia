@@ -28,3 +28,7 @@
 **Vulnerability:** Input strings passed to `parse_date_robust` and `validate_period` lacked length constraints before processing (like allocations during replacements or `.to_uppercase()`). This can allow for memory exhaustion (DoS) attacks via overly large string inputs.
 **Learning:** String manipulation operations like `replace` and `to_uppercase` allocate new memory. An unbounded string input exposes these methods to Denial of Service via memory exhaustion.
 **Prevention:** Always enforce strict length limits on user-supplied strings using `validate_string_param` before performing any transformation or parsing logic, especially in publicly exposed APIs handling strings like dates or periods.
+## 2026-11-03 - Fix missing length bounds on user-supplied strings before URL encoding
+**Vulnerability:** Similar to date and period parsing, input strings like `symbol`, `index`, `series`, and `mode` passed to publicly exposed endpoints lacked length constraints before processing (URL encoding). This allows memory exhaustion (DoS) attacks via overly large string inputs.
+**Learning:** Functions performing unbounded string operations on unvalidated user input expose the application to DoS attacks via memory exhaustion. URL encoding (`utf8_percent_encode`) allocates memory proportional to the input length.
+**Prevention:** Always enforce strict length limits on user-supplied strings using `validate_string_param` before performing any transformation, including URL encoding, especially in publicly exposed APIs.

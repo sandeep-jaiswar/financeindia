@@ -94,7 +94,10 @@ pub fn build_client(extra_headers: Option<reqwest::header::HeaderMap>) -> Financ
 /// Validates that a string parameter is not empty and has reasonable length.
 pub fn validate_string_param(value: &str, param_name: &str, max_len: usize) -> FinanceResult<()> {
     if value.is_empty() {
-        return Err(FinanceError::Validation(format!("{} cannot be empty", param_name)));
+        return Err(FinanceError::Validation(format!(
+            "{} cannot be empty",
+            param_name
+        )));
     }
     if value.len() > max_len {
         return Err(FinanceError::Validation(format!(
@@ -110,9 +113,10 @@ pub fn validate_period(period: &str) -> FinanceResult<()> {
     validate_string_param(period, "period", 10)?;
     let upper = period.to_uppercase();
     if !(upper.starts_with("Q") || upper.starts_with("FY") || upper.starts_with("YE")) {
-        return Err(FinanceError::Validation(
-            format!("Invalid period '{}'. Use Q1-Q4, FY, or YE.", period)
-        ));
+        return Err(FinanceError::Validation(format!(
+            "Invalid period '{}'. Use Q1-Q4, FY, or YE.",
+            period
+        )));
     }
     Ok(())
 }
@@ -164,7 +168,13 @@ fn retry_after_secs(resp: &reqwest::Response) -> Option<u64> {
         .trim()
         .parse::<u64>()
         .ok()
-        .and_then(|secs| if secs <= MAX_RETRY_AFTER { Some(secs) } else { None })
+        .and_then(|secs| {
+            if secs <= MAX_RETRY_AFTER {
+                Some(secs)
+            } else {
+                None
+            }
+        })
 }
 
 pub async fn fetch_bytes(

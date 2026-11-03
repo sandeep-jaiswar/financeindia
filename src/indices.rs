@@ -12,6 +12,7 @@ pub async fn all_indices(client: &Client) -> FinanceResult<Bytes> {
 
 /// Fetches constituent stocks for a given index (e.g. `"NIFTY 50"`).
 pub async fn index_constituents(client: &Client, index: &str) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(index, "index", 50)?;
     let encoded_index = utf8_percent_encode(index, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/equity-stock-indices?index={}",
@@ -27,6 +28,7 @@ pub async fn index_history(
     from_date: &str,
     to_date: &str,
 ) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(index, "index", 50)?;
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_index = utf8_percent_encode(index, NON_ALPHANUMERIC).to_string();

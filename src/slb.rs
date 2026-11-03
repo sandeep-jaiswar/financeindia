@@ -32,6 +32,7 @@ pub async fn slb_eligible(client: &Client) -> FinanceResult<Bytes> {
 
 /// Fetches SLB live analysis / open positions for a specific series.
 pub async fn live_analysis_slb(client: &Client, series: &str) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(series, "series", 20)?;
     let encoded_series = utf8_percent_encode(series, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/live-analysis-slb?series={}",

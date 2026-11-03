@@ -50,6 +50,7 @@ pub async fn bhav_copy_derivatives(
 /// parameter; the nearest expiry is resolved via `option-chain-contract-info`.
 /// Equity chains keep the `option-chain-equities` endpoint.
 pub async fn option_chain(client: &Client, symbol: &str, is_index: bool) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(symbol, "symbol", 20)?;
     let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
 
     if !is_index {
