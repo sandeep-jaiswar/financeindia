@@ -88,7 +88,7 @@ impl BhavArchive {
 
                     let file = File::create(&final_path).map_err(FinanceError::Io)?;
                     let mut zip = zip::ZipWriter::new(file);
-                    let options: FileOptions<'_, ()> = FileOptions::default()
+                    let options: FileOptions<'_, '_, ()> = FileOptions::default()
                         .compression_method(zip::CompressionMethod::Stored)
                         .unix_permissions(0o644);
 

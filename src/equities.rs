@@ -50,6 +50,7 @@ pub async fn price_volume_data(
     from_date: &str,
     to_date: &str,
 ) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(symbol, "symbol", 20)?;
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
@@ -153,6 +154,7 @@ pub async fn fifty_two_week_high_low(client: &Client, mode: &str) -> FinanceResu
 
 /// Fetches most active securities for a given index name.
 pub async fn most_active(client: &Client, mode: &str) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(mode, "mode", 20)?;
     let encoded_mode = utf8_percent_encode(mode, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/live-analysis-most-active-securities?index={}",
@@ -182,6 +184,7 @@ pub async fn deliverable_position_data(
     from_date: &str,
     to_date: &str,
 ) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(symbol, "symbol", 20)?;
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
@@ -212,6 +215,7 @@ pub async fn equity_list(client: &Client) -> FinanceResult<Bytes> {
 /// response wraps the quote under `equityResponse[0]`, which is unwrapped here
 /// so the Python API shape is unchanged.
 pub async fn equity_quote(client: &Client, symbol: &str) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(symbol, "symbol", 20)?;
     let encoded_symbol = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
     let url = format!(
         "https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=N&series=EQ&symbol={}",
