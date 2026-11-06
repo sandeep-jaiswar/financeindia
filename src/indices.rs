@@ -53,6 +53,7 @@ pub async fn index_yield(
     from_date: &str,
     to_date: &str,
 ) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(index, "index", 50)?;
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_index = utf8_percent_encode(index, NON_ALPHANUMERIC).to_string();
@@ -100,6 +101,7 @@ pub async fn total_returns_index(
     from_date: &str,
     to_date: &str,
 ) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(index, "index", 50)?;
     let from = parse_date_robust(from_date)?;
     let to = parse_date_robust(to_date)?;
     let encoded_index = utf8_percent_encode(index, NON_ALPHANUMERIC).to_string();
