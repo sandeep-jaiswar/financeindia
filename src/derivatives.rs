@@ -85,6 +85,8 @@ pub async fn option_chain(client: &Client, symbol: &str, is_index: bool) -> Fina
             ))
         })?;
 
+    crate::common::validate_string_param(expiry, "expiry", 20)?;
+
     let url = format!(
         "https://www.nseindia.com/api/option-chain-v3?type=Indices&symbol={}&expiry={}",
         encoded_symbol,
