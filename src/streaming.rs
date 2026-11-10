@@ -80,6 +80,9 @@ pub struct MarketStream {
 impl MarketStream {
     #[new]
     pub fn new(url: String) -> PyResult<Self> {
+        crate::common::validate_string_param(&url, "url", 2048)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+
         let parsed_url = url::Url::parse(&url)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid URL: {}", e)))?;
 

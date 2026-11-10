@@ -52,6 +52,8 @@ pub async fn corporate_actions(client: &Client) -> FinanceResult<Bytes> {
 /// # Security
 /// Only HTTPS URLs pointing to `*.nseindia.com` or `nseindia.com` are accepted (SSRF guard).
 pub async fn parse_xbrl_data(client: &Client, xbrl_url: &str) -> FinanceResult<Bytes> {
+    crate::common::validate_string_param(xbrl_url, "url", 2048)?;
+
     let url = url::Url::parse(xbrl_url).map_err(FinanceError::UrlParse)?;
 
     if url.scheme() != "https" {
